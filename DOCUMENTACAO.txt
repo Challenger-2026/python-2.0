@@ -1,0 +1,186 @@
+================================================================
+SISTEMA DE PONTOS AMBIENTAIS - LOBO-GUARÁ TECH
+Documentação de alterações e fluxo de funcionamento
+================================================================
+
+Este documento explica o que foi alterado no sistema em relação à
+primeira versão e como o programa funciona hoje, do início ao fim.
+Serve como referência pra qualquer pessoa que for ler o código ou usar
+o sistema sem ter acompanhado o desenvolvimento.
+
+
+----------------------------------------------------------------
+1. VISÃO GERAL
+----------------------------------------------------------------
+
+Programa de console em Python que simula o registro de pontos por
+ações ambientais realizadas por uma pessoa ao longo de um período de
+1 a 30 dias. O sistema é dividido em 3 arquivos:
+
+- dados.py   -> guarda os dados do sistema e as regras de cálculo/
+                validação/CRUD. Não imprime nada na tela.
+- menu.py    -> cuida de tudo que aparece na tela e de tudo que é
+                digitado pelo usuário. Usa as funções de dados.py.
+- main.py    -> ponto de entrada; só organiza o fluxo entre os menus.
+
+
+----------------------------------------------------------------
+2. PRINCIPAIS MUDANÇAS FEITAS
+----------------------------------------------------------------
+
+2.1. Fim do catálogo de ações separado
+   Antes existia uma lista fixa de "ações ambientais" (com ID, nome e
+   peso) cadastrada à parte, e a pessoa escolhia uma ação dessa lista
+   pelo ID na hora de registrar pontos. Isso foi removido. Hoje só
+   existe UMA estrutura: os registros do que a pessoa realmente fez
+   (dia, período, ação digitada, nível de impacto, peso, pontos).
+   "Cadastrar uma ação" e "Registrar pontos" viraram a mesma coisa.
+
+2.2. Ninguém digita ID/número decorado em lugar nenhum
+   Em nenhuma tela o sistema pede um "ID da ação" pra a pessoa
+   escolher. Ao registrar pontos, ela digita o nome da ação livremente.
+   Ao atualizar/excluir um registro, o sistema mostra a lista completa
+   numerada (1, 2, 3...) e a pessoa escolhe pela posição mostrada na
+   tela - esse número não é salvo em lugar nenhum, é só um jeito de
+   apontar "qual desses".
+
+2.3. CRUD organizado em "Gerenciar ações"
+   Listar, Buscar, Atualizar e Excluir atuam sobre os registros feitos
+   em "Registrar pontos" (não existe mais opção "Cadastrar" separada).
+   - Buscar é por nome EXATO da ação, mas maiúsculas e minúsculas são
+     tratadas como iguais (buscar "plantar" acha "Plantar" ou
+     "PLANTAR"); não aceita termo vazio.
+   - Atualizar e Excluir mostram a lista inteira direto (sem pedir uma
+     busca antes), e só permitem mudar o nome da ação (nível, peso e
+     pontos não são editáveis - eles definem quanto aquele dia valeu).
+   - Excluir sempre mostra os dados do registro e pede confirmação
+     (s/n) antes de excluir de verdade.
+   - Um número inválido ao escolher qual atualizar/excluir só repete a
+     pergunta, sem reiniciar a operação inteira nem reimprimir a lista.
+
+2.4. Ações por peso
+   O relatório "Ações por peso" ordena os registros REAIS (o que foi
+   de fato feito) do maior peso pro menor - não é mais um catálogo de
+   tipos de ação, é a atividade registrada mesmo.
+
+2.5. Continuar de onde parou / recomeçar / novo ciclo
+   Se a pessoa sai de "Registrar pontos" no meio (sem terminar os 30
+   dias nem atingir 100 pontos), da próxima vez que entrar ali o
+   sistema pergunta se quer continuar de onde parou ou recomeçar do
+   zero. Recomeçar NUNCA apaga os dias já registrados antes, só zera a
+   contagem de pontos do novo ciclo. Quando um ciclo termina de verdade
+   (atinge o limite de pontos ou completa os 30 dias), o sistema avisa
+   e pergunta se quer começar um novo registro na hora, sem precisar
+   voltar pro menu principal.
+
+2.6. Identificação única, tipo login
+   Nome e CPF são pedidos uma única vez, logo na abertura do programa -
+   não são mais pedidos toda vez que a pessoa escolhe "Registrar
+   pontos". O sistema todo usa essa identidade durante a execução.
+
+2.7. CPF como dado sensível
+   O CPF nunca é exibido em nenhuma tela do sistema (nem no resumo
+   final, nem nas tabelas de listar/buscar/atualizar/excluir, nem nos
+   relatórios) - ele só é validado e guardado internamente em cada
+   registro.
+
+2.8. Visual: tabelas com borda e pausa pra leitura
+   Períodos, níveis de impacto e registros são mostrados em tabelas com
+   bordas alinhadas (estilo "+----+----+"). Toda tela que mostra uma
+   informação importante (resultado do dia, resumo final, listagens,
+   relatórios) termina com "Pressione ENTER para continuar...", pra dar
+   tempo de ler antes de a tela seguinte aparecer.
+
+2.9. Espaçamento entre perguntas
+   Todas as perguntas novas (não os reenvios após erro) ganharam uma
+   linha em branco antes, pra não ficarem coladas com a tela anterior -
+   inclui os três menus, "Buscar ação", "Ir para o próximo período" etc.
+
+2.10. Outros ajustes pontuais
+   - Nome do sistema: "SISTEMA DE PONTOS AMBIENTAIS LOBO-GUARÁ TECH".
+   - Menu principal usa "0" pra Sair (em vez de ser a última opção).
+   - Removido o campo "unidade" das ações (não tinha efeito funcional).
+   - Mensagem de sucesso do registro não mostra mais números de ID.
+
+
+----------------------------------------------------------------
+3. FLUXO DE FUNCIONAMENTO
+----------------------------------------------------------------
+
+3.1. Abertura do sistema
+   Ao iniciar (python main.py), a tela é limpa e o sistema pede, uma
+   única vez:
+     - Nome do usuário
+     - CPF (11 números válidos)
+   Essa identidade vale pro resto da execução.
+
+3.2. Menu principal
+     0. Sair
+     1. Registrar pontos
+     2. Gerenciar ações
+     3. Relatórios
+
+3.3. Opção 1 - Registrar pontos
+   a) Mostra a tabela de períodos (1 a 7 dias / 8 a 15 dias / 16 a 30
+      dias, com os pontos por dia de cada um).
+   b) Se já existe um progresso salvo de uma vez anterior (a pessoa
+      parou no meio), pergunta: continuar de onde parou (c) ou
+      recomeçar do zero (r)?
+   c) Se for começar do zero, pergunta o período inicial (1, 2 ou 3).
+   d) Pra cada dia dentro do período:
+        - Pergunta se a pessoa fez alguma ação ambiental naquele dia.
+        - Se não fez: registra o dia com 0 pontos (nem os pontos base
+          do dia são dados).
+        - Se fez: mostra a tabela de níveis de impacto (Alto/Médio/
+          Baixo, cada um com um peso fixo) e exemplos de ações por
+          nível; pede o nível primeiro, depois o nome da ação
+          realizada (texto livre); calcula os pontos do dia respeitando
+          os limites do sistema (limite total, limite por dias, limite
+          por ações).
+        - Mostra o resultado daquele dia (ação, nível, peso, pontos,
+          acumulado).
+        - Pergunta se quer registrar o próximo dia; ao completar os
+          dias de um período, pergunta se quer avançar pro próximo.
+   e) Quando o ciclo termina (atinge o limite de 100 pontos ou completa
+      os 30 dias) ou a pessoa decide parar, mostra um resumo final
+      (usuário, períodos usados, dias registrados, pontos por
+      categoria, total).
+   f) Se o ciclo terminou de verdade, pergunta se quer iniciar um novo
+      registro do zero na hora; se não, ou se a pessoa só decidiu
+      parar no meio, o progresso fica salvo pra continuar depois.
+
+3.4. Opção 2 - Gerenciar ações (CRUD sobre os registros)
+     1. Listar   - mostra todos os registros numerados, em tabela.
+     2. Buscar   - pede o nome exato da ação e mostra os que baterem.
+     3. Atualizar- mostra a lista completa numerada, pede qual
+                   atualizar, mostra os dados dele e pede o novo nome
+                   (nível/peso/pontos continuam os mesmos).
+     4. Excluir  - mesma lista, escolhe qual, mostra os dados e pede
+                   confirmação (s/n) antes de excluir de verdade.
+     5. Voltar
+
+3.5. Opção 3 - Relatórios
+     1. Ver registros       - lista tudo (mesma tabela do CRUD).
+     2. Filtrar por período - pede o período e mostra só os registros
+                               daquele período.
+     3. Ações por peso      - mostra os registros ordenados do maior
+                               peso de ação pro menor.
+     4. Voltar
+
+3.6. Opção 0 - Sair
+   Encerra o programa.
+
+
+----------------------------------------------------------------
+4. REGRAS IMPORTANTES QUE VALEM PARA O SISTEMA TODO
+----------------------------------------------------------------
+
+- O peso de uma ação nunca é editável depois de registrada - ele vem
+  do nível de impacto escolhido na hora (Alto = 1,06 / Médio = 0,66 /
+  Baixo = 0,16); pra mudar, é preciso excluir o registro e fazer um
+  novo em "Registrar pontos".
+- Erros de validação (nome vazio, CPF inválido, resposta fora de s/n,
+  número fora da lista etc.) sempre pedem a informação de novo, nunca
+  cancelam a operação silenciosamente.
+- Nenhum dado histórico é apagado automaticamente - só a exclusão
+  manual e explícita (com confirmação) remove um registro.
