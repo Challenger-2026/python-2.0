@@ -7,6 +7,8 @@ digitado pelo usuario. O calculo e a validação ficam em dados.py; aqui
 so chamamos essas funções e mostramos o resultado.
 """
 
+import textwrap
+
 import dados
 
 
@@ -136,31 +138,51 @@ def mostra_registros_numerados(lista_registros: list[dict]) -> None:
     """
     Exibe uma tabela com os registros, numerados pela posição (1, 2,
     3...) dentro dessa lista, pra permitir escolher um deles sem usar
-    nenhum ID fixo. O CPF não é exibido (dado sensível) - fica guardado
-    só internamente.
+    nenhum ID fixo. Ação e Nome que não cabem na largura da coluna
+    quebram em mais linhas dentro da mesma borda, por palavra inteira
+    (igual ao "Wrap Text" do Excel), em vez de estourar o alinhamento
+    da tabela. O CPF não é exibido (dado sensível) - fica guardado só
+    internamente.
     Entrada: lista_registros (list[dict]).
     Saida: não retorna valor; imprime a tabela numerada.
     """
+    largura_acao = 20
+    largura_nome = 20
+
     borda = (
         "+" + "-" * 5 + "+" + "-" * 5 + "+" + "-" * 5 + "+" + "-" * 22
-        + "+" + "-" * 9 + "+" + "-" * 7 + "+" + "-" * 8 + "+" + "-" * 14 + "+"
+        + "+" + "-" * 9 + "+" + "-" * 7 + "+" + "-" * 8 + "+" + "-" * 22 + "+"
     )
 
     print("\n" + borda)
     print(
         f"| {'Nº':>3} | {'Dia':>3} | {'Per':>3} | {'Ação':<20} | "
-        f"{'Nível':<7} | {'Peso':>5} | {'Pontos':>6} | {'Nome':<12} |"
+        f"{'Nível':<7} | {'Peso':>5} | {'Pontos':>6} | {'Nome':<20} |"
     )
     print(borda)
 
     for posicao, r in enumerate(lista_registros, start=1):
-        print(
-            f"| {posicao:>3} | {r['dia']:>3} | {r['periodo']:>3} | "
-            f"{r['acao']:<20} | {r['nivel']:<7} | {r['peso']:>5.2f} | "
-            f"{r['pontos']:>6.2f} | {r['nome']:<12} |"
-        )
+        linhas_acao = textwrap.wrap(r["acao"], largura_acao) or [""]
+        linhas_nome = textwrap.wrap(r["nome"], largura_nome) or [""]
 
-    print(borda)
+        for i in range(max(len(linhas_acao), len(linhas_nome))):
+            acao_linha = linhas_acao[i] if i < len(linhas_acao) else ""
+            nome_linha = linhas_nome[i] if i < len(linhas_nome) else ""
+
+            if i == 0:
+                print(
+                    f"| {posicao:>3} | {r['dia']:>3} | {r['periodo']:>3} | "
+                    f"{acao_linha:<{largura_acao}} | {r['nivel']:<7} | {r['peso']:>5.2f} | "
+                    f"{r['pontos']:>6.2f} | {nome_linha:<{largura_nome}} |"
+                )
+            else:
+                print(
+                    f"| {'':>3} | {'':>3} | {'':>3} | "
+                    f"{acao_linha:<{largura_acao}} | {'':<7} | {'':>5} | "
+                    f"{'':>6} | {nome_linha:<{largura_nome}} |"
+                )
+
+        print(borda)
 
 
 # ---------------------------------------------------------------------------

@@ -102,6 +102,23 @@ ações ambientais realizadas por uma pessoa ao longo de um período de
    - Removido o campo "unidade" das ações (não tinha efeito funcional).
    - Mensagem de sucesso do registro não mostra mais números de ID.
 
+2.11. Quebra de texto longo nas tabelas (igual ao "Wrap Text" do Excel)
+   As colunas "Ação" e "Nome" da tabela de registros (mostra_registros_
+   numerados) recebem texto digitado livremente (nome da ação, nome
+   completo do usuário), sem limite de tamanho. Antes, um texto maior
+   que a coluna quebrava o alinhamento da borda. Agora, o texto que não
+   cabe é quebrado em mais linhas dentro da mesma borda, sempre por
+   palavra inteira (nunca no meio de uma palavra) - a "altura" daquela
+   linha da tabela vira o maior número de linhas entre Ação e Nome
+   daquele registro; as demais colunas (Nº, Dia, Per, Nível, Peso,
+   Pontos) só aparecem na primeira linha, as linhas extras ficam em
+   branco nelas. Isso usa textwrap.wrap(), da biblioteca padrão do
+   Python (módulo "textwrap", nenhuma instalação extra necessária) -
+   só faz a quebra em si; o alinhamento em colunas continua sendo feito
+   manualmente com f-strings, igual ao resto do sistema. A numeração da
+   posição (usada em Atualizar/Excluir) não é afetada - continua
+   contando por registro, não por linha impressa.
+
 
 ----------------------------------------------------------------
 3. FLUXO DE FUNCIONAMENTO
@@ -238,7 +255,11 @@ ações ambientais realizadas por uma pessoa ao longo de um período de
    - mostra_registros_numerados....: tabela com vários registros
                                       numerados; usada em Listar,
                                       Buscar, Atualizar, Excluir e nos
-                                      3 relatórios; não mostra o CPF.
+                                      3 relatórios; não mostra o CPF;
+                                      usa textwrap (biblioteca padrão)
+                                      pra quebrar Ação/Nome longos em
+                                      mais linhas sem quebrar a borda
+                                      (ver 2.11).
    - registrar_pontos..............: conduz o registro de pontos dia a
                                       dia e mostra o resumo final -
                                       função principal do sistema.
