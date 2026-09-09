@@ -184,3 +184,84 @@ ações ambientais realizadas por uma pessoa ao longo de um período de
   cancelam a operação silenciosamente.
 - Nenhum dado histórico é apagado automaticamente - só a exclusão
   manual e explícita (com confirmação) remove um registro.
+
+
+----------------------------------------------------------------
+5. RESUMO DOS ARQUIVOS E DAS FUNÇÕES
+----------------------------------------------------------------
+
+5.1. dados.py (dados + regras de negócio - sem print/input)
+
+   Dados do sistema: periodos, niveis_impacto, registros, progresso e
+   os LIMITE_* - já descritos na seção 3.1 acima.
+
+   - nome_valido............: nome/ação/termo não pode ser vazio.
+   - nome_completo_valido...: exige nome e sobrenome (não só um nome).
+   - cpf_valido.............: confere formato e dígitos verificadores
+                               do CPF.
+   - inteiro_valido.........: diz se um texto pode virar número
+                               inteiro.
+   - periodo_valido.........: diz se o período informado é 1, 2 ou 3.
+   - nivel_impacto_valido...: diz se o nível de impacto informado
+                               existe.
+   - base_diaria............: pontos básicos do dia, conforme a faixa
+                               (1, 2 ou 3 pontos).
+   - peso_do_nivel..........: peso (Alto/Médio/Baixo) de um nível de
+                               impacto.
+   - nome_do_nivel..........: nome (Alto/Médio/Baixo) de um nível de
+                               impacto.
+   - calcula_pontos_dia.....: calcula os pontos do dia já respeitando
+                               os limites do sistema.
+   - buscar_registros.......: encontra os registros com o nome de ação
+                               exato informado.
+   - atualizar_registro.....: troca o nome da ação de um registro.
+   - excluir_registro.......: remove um registro da lista.
+   - filtrar_por_periodo....: seleciona os registros de um período.
+   - pega_peso_registro.....: pega o peso de um registro (auxiliar de
+                               ordenação).
+   - registros_por_peso.....: ordena os registros do maior peso pro
+                               menor.
+
+5.2. menu.py (interface - telas, input(), try/except/else/finally)
+
+   - pausar.......................: espera ENTER antes de seguir.
+   - identificar_usuario..........: pede nome completo e CPF, uma
+                                     única vez, na entrada do sistema.
+   - mostra_periodos...............: tabela com borda dos períodos.
+   - mostra_niveis_impacto.........: tabela com borda dos níveis de
+                                      impacto.
+   - mostra_exemplos_acoes.........: níveis de impacto + exemplos
+                                      ilustrativos de ações por nível.
+   - mostra_registro...............: dados de um único registro
+                                      (usada antes de atualizar/
+                                      excluir); não mostra o CPF.
+   - mostra_registros_numerados....: tabela com vários registros
+                                      numerados; usada em Listar,
+                                      Buscar, Atualizar, Excluir e nos
+                                      3 relatórios; não mostra o CPF.
+   - registrar_pontos..............: conduz o registro de pontos dia a
+                                      dia e mostra o resumo final -
+                                      função principal do sistema.
+   - listar_registros_interativo...: lista todos os registros.
+   - buscar_registro_interativo....: busca registros pelo nome da
+                                      ação.
+   - atualizar_registro_interativo.: escolhe um registro pela posição
+                                      e atualiza o nome dele.
+   - excluir_registro_interativo...: escolhe um registro pela posição
+                                      e exclui, com confirmação.
+   - menu_principal.................: menu 0-Sair/1-Registrar/
+                                       2-Gerenciar/3-Relatórios.
+   - menu_crud......................: submenu de Gerenciar ações
+                                       (Listar/Buscar/Atualizar/
+                                       Excluir/Voltar).
+   - menu_relatorios................: submenu de Relatórios (Ver
+                                       registros/Filtrar por período/
+                                       Ações por peso/Voltar).
+
+5.3. main.py (orquestração)
+
+   - main...........................: limpa a tela, identifica o
+                                       usuário uma vez e conduz o loop
+                                       dos menus, chamando as funções
+                                       de menu.py com os dados de
+                                       dados.py.

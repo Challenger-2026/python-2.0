@@ -67,6 +67,20 @@ def nome_valido(nome: str) -> bool:
     return bool(nome.strip())
 
 
+def nome_completo_valido(nome: str) -> bool:
+    """
+    Verifica se o nome completo tem pelo menos duas partes separadas por
+    espaço (nome e sobrenome) somando pelo menos 3 letras - evita nomes
+    vazios, de uma letra só ou sem sobrenome.
+    Entrada: nome (str).
+    Saida: True se valido ou False se invalido.
+    """
+    nome = nome.strip()
+    partes = nome.split()
+
+    return len(partes) >= 2 and len(nome.replace(" ", "")) >= 3
+
+
 def cpf_valido(cpf: str) -> bool:
     """
     Valida o formato e os digitos verificadores do CPF.

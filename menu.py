@@ -27,7 +27,9 @@ def pausar() -> None:
 def identificar_usuario() -> tuple[str, str]:
     """
     Pede o nome e o CPF do usuário logo na entrada do sistema, como um
-    login - só é pedido uma vez, não a cada "Registrar pontos".
+    login - só é pedido uma vez, não a cada "Registrar pontos". O nome
+    precisa ter nome e sobrenome (pelo menos duas partes, 3 letras no
+    total).
     Entrada: nome e CPF informados pelo teclado.
     Saida: tupla (nome, cpf), já validados.
     """
@@ -37,8 +39,8 @@ def identificar_usuario() -> tuple[str, str]:
 
     nome = input("\nNome do usuário: ").strip()
 
-    while not dados.nome_valido(nome):
-        print("Nome inválido, digite de novo.")
+    while not dados.nome_completo_valido(nome):
+        print("Nome inválido, digite nome e sobrenome.")
         nome = input("Nome do usuário: ").strip()
 
     cpf = input("CPF (só números): ").strip()
@@ -433,40 +435,41 @@ def atualizar_registro_interativo(lista_registros: list[dict]) -> bool:
     validação, pergunta de novo em vez de cancelar a atualização.
     Entrada: lista_registros (list[dict]); posição escolhida e novo nome
              informados pelo teclado.
-    Saida: True depois de atualizar com sucesso.
+    Saida: True depois de atualizar com sucesso; False se não havia
+           nenhum registro cadastrado (não há o que atualizar).
     """
-    while True:
-        try:
-            if not lista_registros:
-                raise ValueError("Nenhum registro cadastrado ainda.")
+    try:
+        if not lista_registros:
+            raise ValueError("Nenhum registro cadastrado ainda.")
 
-            mostra_registros_numerados(lista_registros)
+        mostra_registros_numerados(lista_registros)
 
-            entrada = input("\nQual desses você quer atualizar? (digite o número da lista acima): ").strip()
+        entrada = input("\nQual desses você quer atualizar? (digite o número da lista acima): ").strip()
 
-            while not dados.inteiro_valido(entrada) or not (1 <= int(entrada) <= len(lista_registros)):
-                print("Número inválido.")
-                entrada = input("Qual desses você quer atualizar? (digite o número da lista acima): ").strip()
+        while not dados.inteiro_valido(entrada) or not (1 <= int(entrada) <= len(lista_registros)):
+            print("Número inválido.")
+            entrada = input("Qual desses você quer atualizar? (digite o número da lista acima): ").strip()
 
-            registro = lista_registros[int(entrada) - 1]
+        registro = lista_registros[int(entrada) - 1]
 
-            mostra_registro(registro)
+        mostra_registro(registro)
 
-            nome = input("\nNovo nome da ação (deixe em branco para manter): ").strip()
+        nome = input("\nNovo nome da ação (deixe em branco para manter): ").strip()
 
-        except ValueError as e:
-            print(f"Erro: {e}")
-            continue
+    except ValueError as e:
+        print(f"\nErro: {e}")
+        sucesso = False
 
-        else:
-            dados.atualizar_registro(lista_registros, registro, nome)
-            print("Registro atualizado!")
+    else:
+        dados.atualizar_registro(lista_registros, registro, nome)
+        print("Registro atualizado!")
+        sucesso = True
 
-        finally:
-            print("Fim da tentativa de atualização.")
+    finally:
+        print("Fim da tentativa de atualização.")
 
-        pausar()
-        return True
+    pausar()
+    return sucesso
 
 
 def excluir_registro_interativo(lista_registros: list[dict]) -> bool:
@@ -478,47 +481,49 @@ def excluir_registro_interativo(lista_registros: list[dict]) -> bool:
     Entrada: lista_registros (list[dict]); posição escolhida informada
              pelo teclado.
     Saida: True depois de concluir a tentativa (excluindo ou cancelando
-           na confirmação).
+           na confirmação); False se não havia nenhum registro
+           cadastrado (não há o que excluir).
     """
-    while True:
-        try:
-            if not lista_registros:
-                raise ValueError("Nenhum registro cadastrado ainda.")
+    try:
+        if not lista_registros:
+            raise ValueError("Nenhum registro cadastrado ainda.")
 
-            mostra_registros_numerados(lista_registros)
+        mostra_registros_numerados(lista_registros)
 
-            entrada = input("\nQual desses você quer excluir? (digite o número da lista acima): ").strip()
+        entrada = input("\nQual desses você quer excluir? (digite o número da lista acima): ").strip()
 
-            while not dados.inteiro_valido(entrada) or not (1 <= int(entrada) <= len(lista_registros)):
-                print("Número inválido.")
-                entrada = input("Qual desses você quer excluir? (digite o número da lista acima): ").strip()
+        while not dados.inteiro_valido(entrada) or not (1 <= int(entrada) <= len(lista_registros)):
+            print("Número inválido.")
+            entrada = input("Qual desses você quer excluir? (digite o número da lista acima): ").strip()
 
-            registro = lista_registros[int(entrada) - 1]
+        registro = lista_registros[int(entrada) - 1]
 
-        except ValueError as e:
-            print(f"Erro: {e}")
-            continue
+    except ValueError as e:
+        print(f"\nErro: {e}")
+        sucesso = False
 
+    else:
+        mostra_registro(registro)
+
+        confirma = input("\nConfirma exclusão? (s/n): ").strip().lower()
+
+        while confirma not in ("s", "n"):
+            print("Resposta inválida, digite s ou n.")
+            confirma = input("Confirma exclusão? (s/n): ").strip().lower()
+
+        if confirma == "s":
+            dados.excluir_registro(lista_registros, registro)
+            print("Registro excluído!")
         else:
-            mostra_registro(registro)
+            print("Exclusão cancelada.")
 
-            confirma = input("\nConfirma exclusão? (s/n): ").strip().lower()
+        sucesso = True
 
-            while confirma not in ("s", "n"):
-                print("Resposta inválida, digite s ou n.")
-                confirma = input("Confirma exclusão? (s/n): ").strip().lower()
+    finally:
+        print("Fim da tentativa de exclusão.")
 
-            if confirma == "s":
-                dados.excluir_registro(lista_registros, registro)
-                print("Registro excluído!")
-            else:
-                print("Exclusão cancelada.")
-
-        finally:
-            print("Fim da tentativa de exclusão.")
-
-        pausar()
-        return True
+    pausar()
+    return sucesso
 
 
 # ---------------------------------------------------------------------------
