@@ -296,17 +296,30 @@ def excluir_registro(lista_registros: list[dict], registro: dict) -> bool:
 # RELATÓRIOS E FILTROS
 # ---------------------------------------------------------------------------
 
-def filtrar_por_periodo(lista_registros: list[dict], p: int) -> list[dict]:
+def filtrar_por_periodo(lista_periodos: list[tuple], lista_registros: list[dict], p: int) -> list[dict]:
     """
-    Seleciona os registros de um periodo.
-    Entrada: lista_registros (list[dict]); p (int), número do período.
-    Saida: lista de dicionários encontrados, podendo estar vazia.
+    Seleciona os registros cujo dia pertence a faixa do periodo buscado
+    (1 a 7, 8 a 15 ou 16 a 30), pela posicao real do dia - nao pela meta
+    que a pessoa escolheu ao registrar (um dia 3 gravado dentro de uma
+    meta "periodo 2" continua sendo dia de periodo 1 nessa busca). Os
+    dicionarios retornados sao copias com o campo "periodo" ajustado para
+    o periodo buscado, pra bater com a busca feita; os registros originais
+    em lista_registros nao sao alterados.
+    Entrada: lista_periodos (list[tuple]); lista_registros (list[dict]);
+             p (int), numero do periodo buscado.
+    Saida: lista de copias dos dicionarios encontrados, podendo estar
+           vazia.
     """
+    limite_superior = lista_periodos[p - 1][4]
+    limite_inferior = 1 if p == 1 else lista_periodos[p - 2][4] + 1
+
     filtrados = []
 
     for r in lista_registros:
-        if r["periodo"] == p:
-            filtrados.append(r)
+        if limite_inferior <= r["dia"] <= limite_superior:
+            copia = dict(r)
+            copia["periodo"] = p
+            filtrados.append(copia)
 
     return filtrados
 

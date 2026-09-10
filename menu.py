@@ -261,11 +261,7 @@ def registrar_pontos(
             periodo = int(entrada)
             limite_dias = lista_periodos[periodo - 1][4]
             periodos_usados = [periodo]
-
-            if periodo == 1:
-                dia = 1
-            else:
-                dia = lista_periodos[periodo - 2][4] + 1
+            dia = 1
 
             dias_registrados = 0
             pts_dias = 0.0

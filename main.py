@@ -82,7 +82,7 @@ def main() -> None:
                             p = input("\nPeríodo (1, 2 ou 3): ").strip()
 
                             if dados.inteiro_valido(p) and dados.periodo_valido(int(p)):
-                                filtrados = dados.filtrar_por_periodo(dados.registros, int(p))
+                                filtrados = dados.filtrar_por_periodo(dados.periodos, dados.registros, int(p))
 
                                 if filtrados:
                                     menu.mostra_registros_numerados(filtrados)
