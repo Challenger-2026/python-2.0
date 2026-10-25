@@ -3,17 +3,26 @@ Camada de interface (menus, mensagens e entrada de dados) do
 Sistema de Pontos Ambientais Lobo-guará Tech.
 
 Este modulo cuida de tudo o que aparece na tela e de tudo o que e
-digitado pelo usuario. O calculo e a validação ficam em dados.py; aqui
-so chamamos essas funções e mostramos o resultado.
+digitado pelo usuario. O calculo e a validação ficam em dados.py e o
+acesso ao banco fica em banco.py; aqui so chamamos essas funções e
+mostramos o resultado. Cada função tem uma única responsabilidade:
+as funções "pede_*" fazem uma pergunta, as "mostra_*" imprimem algo e
+as "*_interativo" juntam essas peças em uma tela completa.
 """
 
 import textwrap
 
+import banco
 import dados
+
+# Resultado de decide_proximo_passo: o que fazer depois de registrar um dia.
+PASSO_SEGUIR: str = "seguir"
+PASSO_PARAR: str = "parar"
+PASSO_CONCLUIDO: str = "concluido"
 
 
 # ---------------------------------------------------------------------------
-# TELA
+# PERGUNTAS REUTILIZÁVEIS
 # ---------------------------------------------------------------------------
 
 def pausar() -> None:
@@ -26,34 +35,117 @@ def pausar() -> None:
     input("\nPressione ENTER para continuar...")
 
 
-def identificar_usuario() -> tuple[str, str]:
+def pergunta_sim_nao(pergunta: str) -> bool:
     """
-    Pede o nome e o CPF do usuário logo na entrada do sistema, como um
-    login - só é pedido uma vez, não a cada "Registrar pontos". O nome
-    precisa ter nome e sobrenome (pelo menos duas partes, 3 letras no
-    total).
-    Entrada: nome e CPF informados pelo teclado.
-    Saida: tupla (nome, cpf), já validados.
+    Faz uma pergunta de sim ou não e repete até receber s ou n.
+    Entrada: pergunta (str), sem o "(s/n)" no final.
+    Saida: True se a resposta foi s, False se foi n.
     """
-    print("\n" + "=" * 50)
-    print("SISTEMA DE PONTOS AMBIENTAIS LOBO-GUARÁ TECH")
-    print("=" * 50)
+    resposta = input(f"\n{pergunta} (s/n): ").strip().lower()
 
-    nome = input("\nNome do usuário: ").strip()
+    while resposta not in ("s", "n"):
+        print("Resposta inválida, digite s ou n.")
+        resposta = input(f"{pergunta} (s/n): ").strip().lower()
 
-    while not dados.nome_completo_valido(nome):
-        print("Nome inválido, digite nome e sobrenome.")
-        nome = input("Nome do usuário: ").strip()
+    return resposta == "s"
 
-    cpf = input("CPF (só números): ").strip()
 
-    while not dados.cpf_valido(cpf):
+def pede_numero_da_lista(pergunta: str, quantidade: int) -> int:
+    """
+    Pede a posição de um item numa lista mostrada na tela (1, 2, 3...) e
+    repete até receber um número dentro da lista.
+    Entrada: pergunta (str); quantidade (int), total de itens da lista.
+    Saida: posição escolhida (int), entre 1 e quantidade.
+    """
+    escolha = input(f"\n{pergunta} (número): ").strip()
+
+    while not dados.inteiro_valido(escolha) or not (1 <= int(escolha) <= quantidade):
+        print("Número inválido.")
+        escolha = input(f"{pergunta} (número): ").strip()
+
+    return int(escolha)
+
+
+# ---------------------------------------------------------------------------
+# IDENTIFICAÇÃO DO USUÁRIO
+# ---------------------------------------------------------------------------
+
+def pede_cpf_valido() -> str:
+    """
+    Pede o CPF até receber um válido, ou 0 para desistir.
+    Entrada: CPF informado pelo teclado.
+    Saida: CPF (str) com 11 números, ou string vazia se o usuário digitou 0.
+    """
+    cpf = input("\nCPF (só números, ou 0 para voltar): ").strip()
+
+    while cpf != "0" and not dados.cpf_valido(cpf):
         print("CPF inválido, digite os 11 números de um CPF válido.")
-        cpf = input("CPF (só números): ").strip()
+        cpf = input("CPF (só números, ou 0 para voltar): ").strip()
 
-    print(f"\nOlá, {nome}!")
+    return "" if cpf == "0" else cpf
 
-    return nome, cpf
+
+def pede_usuario_cadastrado(conexao) -> dict | None:
+    """
+    Pede o CPF até encontrar um usuário cadastrado no banco.
+    Entrada: conexao (conexão aberta); CPF pelo teclado.
+    Saida: dict com id e nome do usuário, ou None se ele desistiu (digitou 0).
+    """
+    while True:
+        cpf = pede_cpf_valido()
+
+        if not cpf:
+            return None
+
+        usuario = banco.buscar_usuario_por_cpf(conexao, cpf)
+
+        if usuario is not None:
+            return usuario
+
+        print("CPF não cadastrado. Cadastre-se pelo site e tente de novo.")
+
+
+def escolhe_comunidade(comunidades: list[dict]) -> int:
+    """
+    Mostra as comunidades do usuário e pede em qual ele quer registrar.
+    Entrada: comunidades (list[dict]) com id e nome, não vazia.
+    Saida: id (int) da comunidade escolhida.
+    """
+    print("\nSuas comunidades:")
+
+    for numero, comunidade in enumerate(comunidades, start=1):
+        print(f"{numero}. {comunidade['nome']}")
+
+    numero_escolhido = pede_numero_da_lista("Em qual comunidade registrar?", len(comunidades))
+
+    return comunidades[numero_escolhido - 1]["id"]
+
+
+def identificar_usuario(conexao) -> tuple[dict | None, int | None]:
+    """
+    Identifica o usuário pelo CPF e, se ele participar de comunidades, pede
+    em qual quer registrar as ações. Só é chamada quando o usuário escolhe
+    no menu uma opção que precisa de identificação.
+    Entrada: conexao (conexão aberta); CPF e comunidade pelo teclado.
+    Saida: tupla (usuario, id_comunidade). usuario é dict com id e nome (ou
+           None se desistiu); id_comunidade é None se ele não tem comunidade.
+    """
+    print("\n=== IDENTIFICAÇÃO ===")
+
+    usuario = pede_usuario_cadastrado(conexao)
+
+    if usuario is None:
+        return None, None
+
+    print(f"\nOlá, {usuario['nome']}!")
+
+    comunidades = banco.listar_comunidades_do_usuario(conexao, usuario["id"])
+
+    if not comunidades:
+        print("Você ainda não participa de nenhuma comunidade; entre em uma pelo site para registrar ações.")
+        return usuario, None
+
+    return usuario, escolhe_comunidade(comunidades)
 
 
 # ---------------------------------------------------------------------------
@@ -117,83 +209,456 @@ def mostra_exemplos_acoes(niveis_impacto: list[tuple]) -> None:
 
 def mostra_registro(registro: dict) -> None:
     """
-    Exibe os dados de um único registro, com os rótulos alinhados. O CPF
-    não é exibido (dado sensível) - fica guardado só internamente.
-    Entrada: registro (dict), com dia, periodo, acao, nivel, peso, nome,
-             cpf e pontos.
+    Exibe os dados de um único registro, com os rótulos alinhados.
+    Entrada: registro (dict) com acao, url, status e pontos.
     Saida: não retorna valor; imprime os dados.
     """
     print("-" * 50)
-    print(f"Dia........: {registro['dia']}")
-    print(f"Período....: {registro['periodo']}")
     print(f"Ação.......: {registro['acao']}")
-    print(f"Nível......: {registro['nivel']}")
-    print(f"Peso.......: {registro['peso']:.2f}")
+    print(f"Evidência..: {registro['url']}")
+    print(f"Status.....: {registro['status']}")
     print(f"Pontos.....: {registro['pontos']:.2f}")
-    print(f"Nome.......: {registro['nome']}")
     print("-" * 50)
 
 
 def mostra_registros_numerados(lista_registros: list[dict]) -> None:
     """
-    Exibe uma tabela com os registros, numerados pela posição (1, 2,
-    3...) dentro dessa lista, pra permitir escolher um deles sem usar
-    nenhum ID fixo. Ação e Nome que não cabem na largura da coluna
-    quebram em mais linhas dentro da mesma borda, por palavra inteira
-    (igual ao "Wrap Text" do Excel), em vez de estourar o alinhamento
-    da tabela. O CPF não é exibido (dado sensível) - fica guardado só
-    internamente.
+    Exibe uma tabela com os registros, numerados pela posição (1, 2, 3...)
+    para permitir escolher um deles. Ação longa quebra em mais linhas dentro
+    da mesma borda, por palavra inteira (igual ao "Wrap Text" do Excel).
     Entrada: lista_registros (list[dict]).
     Saida: não retorna valor; imprime a tabela numerada.
     """
-    largura_acao = 20
-    largura_nome = 20
+    largura_acao = 30
 
-    borda = (
-        "+" + "-" * 5 + "+" + "-" * 5 + "+" + "-" * 5 + "+" + "-" * 22
-        + "+" + "-" * 9 + "+" + "-" * 7 + "+" + "-" * 8 + "+" + "-" * 22 + "+"
-    )
+    borda = "+" + "-" * 5 + "+" + "-" * 32 + "+" + "-" * 12 + "+" + "-" * 8 + "+"
 
     print("\n" + borda)
-    print(
-        f"| {'Nº':>3} | {'Dia':>3} | {'Per':>3} | {'Ação':<20} | "
-        f"{'Nível':<7} | {'Peso':>5} | {'Pontos':>6} | {'Nome':<20} |"
-    )
+    print(f"| {'Nº':>3} | {'Ação':<30} | {'Status':<10} | {'Pontos':>6} |")
     print(borda)
 
-    for posicao, r in enumerate(lista_registros, start=1):
-        linhas_acao = textwrap.wrap(r["acao"], largura_acao) or [""]
-        linhas_nome = textwrap.wrap(r["nome"], largura_nome) or [""]
+    for posicao, registro in enumerate(lista_registros, start=1):
+        linhas_da_acao = textwrap.wrap(registro["acao"], largura_acao) or [""]
 
-        for i in range(max(len(linhas_acao), len(linhas_nome))):
-            acao_linha = linhas_acao[i] if i < len(linhas_acao) else ""
-            nome_linha = linhas_nome[i] if i < len(linhas_nome) else ""
-
-            if i == 0:
+        for indice, linha_da_acao in enumerate(linhas_da_acao):
+            if indice == 0:
                 print(
-                    f"| {posicao:>3} | {r['dia']:>3} | {r['periodo']:>3} | "
-                    f"{acao_linha:<{largura_acao}} | {r['nivel']:<7} | {r['peso']:>5.2f} | "
-                    f"{r['pontos']:>6.2f} | {nome_linha:<{largura_nome}} |"
+                    f"| {posicao:>3} | {linha_da_acao:<{largura_acao}} | "
+                    f"{registro['status']:<10} | {registro['pontos']:>6.2f} |"
                 )
             else:
-                print(
-                    f"| {'':>3} | {'':>3} | {'':>3} | "
-                    f"{acao_linha:<{largura_acao}} | {'':<7} | {'':>5} | "
-                    f"{'':>6} | {nome_linha:<{largura_nome}} |"
-                )
+                print(f"| {'':>3} | {linha_da_acao:<{largura_acao}} | {'':<10} | {'':>6} |")
 
         print(borda)
 
 
 # ---------------------------------------------------------------------------
-# REGISTRO DE PONTOS (a "ação" principal do sistema)
+# REGISTRO DE PONTOS: ciclo (período inicial, retomada e progresso)
+#
+# O "ciclo" é um dict com o andamento do registro: periodo, dia, pts_dias,
+# pts_acoes, periodos_usados e dias_registrados. É o mesmo formato do dict
+# "progresso" de dados.py, que guarda o ciclo quando o usuário para no meio.
 # ---------------------------------------------------------------------------
 
-def registrar_pontos(
-    nome: str,
-    cpf: str,
+def limite_de_dias(lista_periodos: list[tuple], periodo: int) -> int:
+    """
+    Busca o último dia de um período.
+    Entrada: lista_periodos (list[tuple]); periodo (int), de 1 a 3.
+    Saida: último dia do período (int).
+    """
+    return lista_periodos[periodo - 1][4]
+
+
+def pede_periodo_inicial(lista_periodos: list[tuple]) -> int:
+    """
+    Mostra os períodos e pede em qual começar.
+    Entrada: lista_periodos (list[tuple]); período pelo teclado.
+    Saida: número do período escolhido (int), de 1 a 3.
+    """
+    mostra_periodos(lista_periodos)
+
+    entrada = input("\nPeríodo inicial (1, 2 ou 3): ").strip()
+
+    while not dados.inteiro_valido(entrada) or not dados.periodo_valido(int(entrada)):
+        print("Período inválido.")
+        entrada = input("Período inicial (1, 2 ou 3): ").strip()
+
+    return int(entrada)
+
+
+def inicia_novo_ciclo(lista_periodos: list[tuple]) -> dict:
+    """
+    Cria um ciclo do zero, no período e dia 1 escolhidos pelo usuário.
+    Entrada: lista_periodos (list[tuple]).
+    Saida: ciclo (dict) novo, sem pontos e sem dias registrados.
+    """
+    periodo = pede_periodo_inicial(lista_periodos)
+
+    return {
+        "periodo": periodo,
+        "dia": 1,
+        "pts_dias": 0.0,
+        "pts_acoes": 0.0,
+        "periodos_usados": [periodo],
+        "dias_registrados": 0,
+    }
+
+
+def retoma_ciclo(progresso: dict) -> dict:
+    """
+    Cria um ciclo a partir do progresso salvo, para continuar de onde parou.
+    Entrada: progresso (dict) com ativo=True.
+    Saida: ciclo (dict) com uma cópia dos dados do progresso.
+    """
+    return {
+        "periodo": progresso["periodo"],
+        "dia": progresso["dia"],
+        "pts_dias": progresso["pts_dias"],
+        "pts_acoes": progresso["pts_acoes"],
+        "periodos_usados": list(progresso["periodos_usados"]),
+        "dias_registrados": progresso["dias_registrados"],
+    }
+
+
+def salva_progresso(progresso: dict, ciclo: dict) -> None:
+    """
+    Guarda o ciclo em andamento no progresso, para continuar depois.
+    Entrada: progresso (dict) que será atualizado; ciclo (dict).
+    Saida: não retorna valor.
+    """
+    progresso["ativo"] = True
+    progresso["periodo"] = ciclo["periodo"]
+    progresso["dia"] = ciclo["dia"]
+    progresso["pts_dias"] = ciclo["pts_dias"]
+    progresso["pts_acoes"] = ciclo["pts_acoes"]
+    progresso["periodos_usados"] = ciclo["periodos_usados"]
+    progresso["dias_registrados"] = ciclo["dias_registrados"]
+
+
+def pergunta_continuar_ou_recomecar(progresso: dict) -> bool:
+    """
+    Mostra o progresso salvo e pergunta se continua ou recomeça do zero.
+    Entrada: progresso (dict) com ativo=True; resposta pelo teclado.
+    Saida: True se o usuário quer continuar (c), False se quer recomeçar (r).
+    """
+    acumulado = progresso["pts_dias"] + progresso["pts_acoes"]
+
+    print(
+        f"\nVocê tem um progresso salvo: Dia {progresso['dia']} | "
+        f"Período {progresso['periodo']} | {acumulado:.2f} pts acumulados"
+    )
+    resposta = input("\nContinuar de onde parou ou recomeçar do zero? (c/r): ").strip().lower()
+
+    while resposta not in ("c", "r"):
+        print("Resposta inválida, digite c ou r.")
+        resposta = input("Continuar de onde parou ou recomeçar do zero? (c/r): ").strip().lower()
+
+    return resposta == "c"
+
+
+# ---------------------------------------------------------------------------
+# REGISTRO DE PONTOS: perguntas sobre a ação do dia
+# ---------------------------------------------------------------------------
+
+def pede_nivel_impacto(niveis_impacto: list[tuple]) -> int:
+    """
+    Pede o nível de impacto da ação até receber um que exista.
+    Entrada: niveis_impacto (list[tuple]); nível pelo teclado.
+    Saida: id do nível escolhido (int).
+    """
+    entrada = input("\nNível de impacto da ação (1, 2 ou 3): ").strip()
+
+    while not dados.inteiro_valido(entrada) or not dados.nivel_impacto_valido(niveis_impacto, int(entrada)):
+        print("Nível de impacto inválido.")
+        entrada = input("Nível de impacto da ação (1, 2 ou 3): ").strip()
+
+    return int(entrada)
+
+
+def pede_nome_da_acao() -> str:
+    """
+    Pede o nome da ação realizada até receber um texto não vazio.
+    Entrada: nome pelo teclado.
+    Saida: nome da ação (str).
+    """
+    acao = input("\nAção realizada no dia: ").strip()
+
+    while not dados.nome_valido(acao):
+        print("Ação inválida.")
+        acao = input("Ação realizada no dia: ").strip()
+
+    return acao
+
+
+def pede_link_evidencia() -> str:
+    """
+    Pede o link da evidência da ação até receber um link válido.
+    Entrada: link pelo teclado.
+    Saida: link (str) começando com http:// ou https://.
+    """
+    url = input("\nLink da evidência (começa com http): ").strip()
+
+    while not dados.url_valida(url):
+        print("Link inválido.")
+        url = input("Link da evidência (começa com http): ").strip()
+
+    return url
+
+
+def pede_dados_da_acao(niveis_impacto: list[tuple]) -> dict:
+    """
+    Mostra os níveis e exemplos e pergunta tudo sobre a ação do dia: nível
+    de impacto, nome e link da evidência.
+    Entrada: niveis_impacto (list[tuple]); respostas pelo teclado.
+    Saida: dict com nivel (nome), peso, acao e url.
+    """
+    mostra_exemplos_acoes(niveis_impacto)
+
+    nivel = pede_nivel_impacto(niveis_impacto)
+    acao = pede_nome_da_acao()
+    url = pede_link_evidencia()
+
+    return {
+        "nivel": dados.nome_do_nivel(niveis_impacto, nivel),
+        "peso": dados.peso_do_nivel(niveis_impacto, nivel),
+        "acao": acao,
+        "url": url,
+    }
+
+
+# ---------------------------------------------------------------------------
+# REGISTRO DE PONTOS: um dia
+# ---------------------------------------------------------------------------
+
+def mostra_cabecalho_do_dia(ciclo: dict) -> None:
+    """
+    Mostra o título do dia que vai ser registrado.
+    Entrada: ciclo (dict) com dia e periodo.
+    Saida: não retorna valor; imprime o cabeçalho.
+    """
+    print(f"\n{'=' * 50}")
+    print(f"DIA {ciclo['dia']} | Período {ciclo['periodo']} | base {dados.base_diaria(ciclo['dia']):.2f} pts")
+    print(f"{'=' * 50}")
+
+
+def mostra_resultado_do_dia(resultado: dict, ciclo: dict, limite_total: float) -> None:
+    """
+    Mostra o que foi registrado no dia e o acumulado do ciclo.
+    Entrada: resultado (dict) com acao, nivel, peso e pontos; ciclo (dict);
+             limite_total (float).
+    Saida: não retorna valor; imprime o resultado.
+    """
+    print("\n" + "=" * 50)
+    print(f"REGISTRO DO DIA {ciclo['dia']}")
+    print("=" * 50)
+    print(f"Ação......: {resultado['acao']}")
+    print(f"Nível.....: {resultado['nivel']}")
+    print(f"Peso......: {resultado['peso']:.2f}")
+    print(f"Pontos dia: {resultado['pontos']:.2f}")
+    print(f"Acumulado.: {ciclo['pts_dias'] + ciclo['pts_acoes']:.2f} / {limite_total:.2f}")
+    print("=" * 50)
+
+
+def registra_dia_com_acao(
+    conexao,
+    usuario: dict,
+    id_comunidade: int,
+    ciclo: dict,
+    niveis_impacto: list[tuple],
+    limites: tuple[float, float, float],
+) -> dict | None:
+    """
+    Registra um dia em que o usuário fez uma ação: pergunta os dados, calcula
+    os pontos e grava a ação no banco. Se o banco recusar, desfaz o cálculo
+    dos pontos do dia.
+    Entrada: conexao (conexão aberta); usuario (dict); id_comunidade (int);
+             ciclo (dict) que é atualizado com os pontos; niveis_impacto
+             (list[tuple]); limites (tuple) com limite_total, limite_pts_dias
+             e limite_pts_acoes.
+    Saida: resultado (dict com acao, nivel, peso e pontos), ou None se o
+           banco recusou o registro.
+    """
+    limite_total, limite_pts_dias, limite_pts_acoes = limites
+
+    dados_da_acao = pede_dados_da_acao(niveis_impacto)
+
+    pts_dias_antes = ciclo["pts_dias"]
+    pts_acoes_antes = ciclo["pts_acoes"]
+
+    pontos_do_dia, ciclo["pts_dias"], ciclo["pts_acoes"] = dados.calcula_pontos_dia(
+        ciclo["dia"], dados_da_acao["peso"], pts_dias_antes, pts_acoes_antes,
+        limite_total, limite_pts_dias, limite_pts_acoes,
+    )
+
+    try:
+        banco.inserir_postagem(
+            conexao, dados_da_acao["acao"], dados_da_acao["url"],
+            pontos_do_dia, usuario["id"], id_comunidade,
+        )
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+        ciclo["pts_dias"] = pts_dias_antes
+        ciclo["pts_acoes"] = pts_acoes_antes
+        return None
+
+    return {
+        "acao": dados_da_acao["acao"],
+        "nivel": dados_da_acao["nivel"],
+        "peso": dados_da_acao["peso"],
+        "pontos": pontos_do_dia,
+    }
+
+
+def registra_dia(
+    conexao,
+    usuario: dict,
+    id_comunidade: int,
+    ciclo: dict,
+    niveis_impacto: list[tuple],
+    limites: tuple[float, float, float],
+) -> bool:
+    """
+    Registra um dia do ciclo: pergunta se houve ação e, se houve, grava no
+    banco. Dias sem ação valem 0 pontos e não são gravados no banco.
+    Entrada: mesmos parâmetros de registra_dia_com_acao.
+    Saida: True se o dia foi registrado; False se o banco recusou.
+    """
+    mostra_cabecalho_do_dia(ciclo)
+
+    if pergunta_sim_nao("Fez alguma ação ambiental nesse dia?"):
+        resultado = registra_dia_com_acao(conexao, usuario, id_comunidade, ciclo, niveis_impacto, limites)
+
+        if resultado is None:
+            return False
+    else:
+        resultado = {"acao": "Nenhuma ação", "nivel": "Nenhuma", "peso": 0.0, "pontos": 0.0}
+
+    ciclo["dias_registrados"] += 1
+    mostra_resultado_do_dia(resultado, ciclo, limites[0])
+
+    return True
+
+
+# ---------------------------------------------------------------------------
+# REGISTRO DE PONTOS: o que fazer depois de cada dia
+# ---------------------------------------------------------------------------
+
+def decide_proximo_dia(ciclo: dict) -> str:
+    """
+    Pergunta se o usuário quer registrar o próximo dia e avança o dia do
+    ciclo (também quando ele decide parar, pra retomar do dia seguinte).
+    Entrada: ciclo (dict) que é atualizado; resposta pelo teclado.
+    Saida: PASSO_SEGUIR se quer continuar, PASSO_PARAR se não.
+    """
+    quer_continuar = pergunta_sim_nao("Registrar próximo dia?")
+
+    ciclo["dia"] += 1
+
+    return PASSO_SEGUIR if quer_continuar else PASSO_PARAR
+
+
+def decide_fim_do_periodo(ciclo: dict, lista_periodos: list[tuple]) -> str:
+    """
+    Trata o último dia de um período: conclui o ciclo se era o período 3, ou
+    pergunta se o usuário quer ir para o período seguinte.
+    Entrada: ciclo (dict) que é atualizado; lista_periodos (list[tuple]);
+             resposta pelo teclado.
+    Saida: PASSO_CONCLUIDO, PASSO_SEGUIR (foi para o próximo período) ou
+           PASSO_PARAR (preferiu parar).
+    """
+    if ciclo["periodo"] == 3:
+        print("\nCompletou o período 3.")
+        return PASSO_CONCLUIDO
+
+    proximo_periodo = ciclo["periodo"] + 1
+
+    print(f"\nCompletou o período {ciclo['periodo']} ({limite_de_dias(lista_periodos, ciclo['periodo'])} dias).")
+
+    if not pergunta_sim_nao(f"Ir para o período {proximo_periodo}?"):
+        return PASSO_PARAR
+
+    ciclo["periodo"] = proximo_periodo
+    ciclo["periodos_usados"].append(proximo_periodo)
+    ciclo["dia"] += 1
+
+    return PASSO_SEGUIR
+
+
+def decide_proximo_passo(ciclo: dict, lista_periodos: list[tuple], limite_total: float) -> str:
+    """
+    Decide o que fazer depois de registrar um dia: concluir se atingiu o
+    limite de pontos, tratar o fim do período, ou perguntar pelo próximo dia.
+    Entrada: ciclo (dict); lista_periodos (list[tuple]); limite_total (float).
+    Saida: PASSO_SEGUIR, PASSO_PARAR ou PASSO_CONCLUIDO.
+    """
+    if ciclo["pts_dias"] + ciclo["pts_acoes"] >= limite_total:
+        print("\nLimite de 100 pontos atingido!")
+        return PASSO_CONCLUIDO
+
+    if ciclo["dia"] >= limite_de_dias(lista_periodos, ciclo["periodo"]):
+        return decide_fim_do_periodo(ciclo, lista_periodos)
+
+    return decide_proximo_dia(ciclo)
+
+
+def executa_ciclo(
+    conexao,
+    usuario: dict,
+    id_comunidade: int,
+    ciclo: dict,
     lista_periodos: list[tuple],
-    lista_registros: list[dict],
+    niveis_impacto: list[tuple],
+    limites: tuple[float, float, float],
+) -> bool:
+    """
+    Registra dia após dia até o ciclo terminar ou o usuário parar.
+    Entrada: conexao (conexão aberta); usuario (dict); id_comunidade (int);
+             ciclo (dict) que é atualizado; lista_periodos e niveis_impacto
+             (list[tuple]); limites (tuple) com limite_total, limite_pts_dias
+             e limite_pts_acoes.
+    Saida: True se o ciclo foi concluído (limite de pontos ou 30 dias);
+           False se o usuário parou no meio ou o banco recusou um registro.
+    """
+    while True:
+        if not registra_dia(conexao, usuario, id_comunidade, ciclo, niveis_impacto, limites):
+            return False
+
+        passo = decide_proximo_passo(ciclo, lista_periodos, limites[0])
+
+        if passo == PASSO_CONCLUIDO:
+            return True
+
+        if passo == PASSO_PARAR:
+            return False
+
+
+def mostra_resumo_final(usuario: dict, ciclo: dict, limites: tuple[float, float, float]) -> None:
+    """
+    Mostra o resumo do ciclo: períodos usados, dias e pontos por categoria.
+    Entrada: usuario (dict); ciclo (dict); limites (tuple) com limite_total,
+             limite_pts_dias e limite_pts_acoes.
+    Saida: não retorna valor; imprime o resumo.
+    """
+    limite_total, limite_pts_dias, limite_pts_acoes = limites
+    periodos_usados = ", ".join(str(p) for p in ciclo["periodos_usados"])
+
+    print("\n" + "=" * 50)
+    print("RESUMO FINAL")
+    print("=" * 50)
+    print(f"Usuário.......: {usuario['nome']}")
+    print(f"Períodos......: {periodos_usados}")
+    print(f"Dias..........: {ciclo['dias_registrados']}")
+    print(f"Pontos dias...: {ciclo['pts_dias']:.2f} (limite {limite_pts_dias:.2f})")
+    print(f"Pontos ações..: {ciclo['pts_acoes']:.2f} (limite {limite_pts_acoes:.2f})")
+    print(f"TOTAL.........: {ciclo['pts_dias'] + ciclo['pts_acoes']:.2f} (limite {limite_total:.2f})")
+    print("=" * 50)
+
+
+def registrar_pontos(
+    conexao,
+    usuario: dict,
+    id_comunidade: int | None,
+    lista_periodos: list[tuple],
     niveis_impacto: list[tuple],
     progresso: dict,
     limite_total: float,
@@ -201,287 +666,172 @@ def registrar_pontos(
     limite_pts_acoes: float,
 ) -> None:
     """
-    Conduz o registro de pontos ambientais e apresenta o resumo. Nome e
-    CPF já vêm identificados de antes (pedidos uma única vez na entrada
-    do sistema). A cada dia, pergunta se a pessoa fez alguma ação; se
-    sim, pede o nível de impacto dela (Alto/Médio/Baixo) e o nome do que
-    foi feito - é esse registro que "cadastra" a ação no sistema, não
-    existe um catálogo separado.
-
-    Se já existir um progresso salvo (de uma chamada anterior em que a
-    pessoa parou no meio), pergunta se quer continuar de onde parou ou
-    recomeçar do zero. Ao terminar um ciclo (atingir o limite de pontos
-    ou completar os 30 dias), avisa e pergunta se quer iniciar um novo
-    registro na hora, sem precisar voltar pro menu.
-    Entrada: nome e cpf (str), já identificados; lista_periodos,
-             lista_registros, niveis_impacto e progresso (listas/dict de
-             dados); limite_total, limite_pts_dias e limite_pts_acoes
-             (float), os tetos do sistema; além dos dados informados
-             pelo usuário no teclado.
-    Saida: não retorna valor; adiciona registros em lista_registros e
-           atualiza progresso.
+    Conduz o registro de pontos ambientais: escolhe se continua o progresso
+    salvo ou começa um ciclo novo, registra os dias, mostra o resumo e, se o
+    ciclo terminou de verdade, oferece começar outro na hora. As ações feitas
+    são gravadas no banco como postagens PENDENTES.
+    Entrada: conexao (conexão aberta com o banco); usuario (dict com id e
+             nome); id_comunidade (int, ou None se o usuário não tiver
+             comunidade); lista_periodos, niveis_impacto e progresso
+             (listas/dict de dados); limite_total, limite_pts_dias e
+             limite_pts_acoes (float), os tetos do sistema.
+    Saida: não retorna valor; grava as ações no banco e atualiza progresso.
     """
     print("\n=== REGISTRO DE PONTOS AMBIENTAIS ===")
 
-    continuar_de_onde_parou = False
+    if id_comunidade is None:
+        print("\nVocê precisa participar de uma comunidade para registrar ações.")
+        pausar()
+        return
 
-    if progresso["ativo"]:
-        acumulado = progresso["pts_dias"] + progresso["pts_acoes"]
-        print(
-            f"\nVocê tem um progresso salvo: Dia {progresso['dia']} | "
-            f"Período {progresso['periodo']} | {acumulado:.2f} pts acumulados"
-        )
-        resp = input("\nContinuar de onde parou ou recomeçar do zero? (c/r): ").strip().lower()
-
-        while resp not in ("c", "r"):
-            print("Resposta inválida, digite c ou r.")
-            resp = input("Continuar de onde parou ou recomeçar do zero? (c/r): ").strip().lower()
-
-        continuar_de_onde_parou = resp == "c"
+    limites = (limite_total, limite_pts_dias, limite_pts_acoes)
+    continuar_de_onde_parou = progresso["ativo"] and pergunta_continuar_ou_recomecar(progresso)
 
     while True:
         if continuar_de_onde_parou:
-            periodo = progresso["periodo"]
-            dia = progresso["dia"]
-            limite_dias = lista_periodos[periodo - 1][4]
-            periodos_usados = progresso["periodos_usados"]
-            dias_registrados = progresso["dias_registrados"]
-            pts_dias = progresso["pts_dias"]
-            pts_acoes = progresso["pts_acoes"]
-
+            ciclo = retoma_ciclo(progresso)
         else:
-            mostra_periodos(lista_periodos)
-
-            entrada = input("\nPeríodo inicial (1, 2 ou 3): ").strip()
-
-            while not dados.inteiro_valido(entrada) or not dados.periodo_valido(int(entrada)):
-                print("Período inválido.")
-                entrada = input("Período inicial (1, 2 ou 3): ").strip()
-
-            periodo = int(entrada)
-            limite_dias = lista_periodos[periodo - 1][4]
-            periodos_usados = [periodo]
-            dia = 1
-
-            dias_registrados = 0
-            pts_dias = 0.0
-            pts_acoes = 0.0
+            ciclo = inicia_novo_ciclo(lista_periodos)
 
         continuar_de_onde_parou = False
-        concluido = False
 
-        while True:
-            print(f"\n{'=' * 50}")
-            print(f"DIA {dia} | Período {periodo} | base {dados.base_diaria(dia):.2f} pts")
-            print(f"{'=' * 50}")
+        concluido = executa_ciclo(conexao, usuario, id_comunidade, ciclo, lista_periodos, niveis_impacto, limites)
 
-            fez_acao = input("Fez alguma ação ambiental nesse dia? (s/n): ").strip().lower()
-
-            while fez_acao not in ("s", "n"):
-                print("Resposta inválida, digite s ou n.")
-                fez_acao = input("Fez alguma ação ambiental nesse dia? (s/n): ").strip().lower()
-
-            if fez_acao == "n":
-                acao = "Nenhuma ação"
-                nivel_nome = "Nenhuma"
-                peso = 0.0
-                pts = 0.0
-
-            else:
-                mostra_exemplos_acoes(niveis_impacto)
-
-                entrada = input("\nNível de impacto da ação (1, 2 ou 3): ").strip()
-
-                while not dados.inteiro_valido(entrada) or not dados.nivel_impacto_valido(niveis_impacto, int(entrada)):
-                    print("Nível de impacto inválido.")
-                    entrada = input("Nível de impacto da ação (1, 2 ou 3): ").strip()
-
-                nivel = int(entrada)
-                peso = dados.peso_do_nivel(niveis_impacto, nivel)
-                nivel_nome = dados.nome_do_nivel(niveis_impacto, nivel)
-
-                acao = input("\nAção realizada no dia: ").strip()
-
-                while not dados.nome_valido(acao):
-                    print("Ação inválida.")
-                    acao = input("Ação realizada no dia: ").strip()
-
-                pts, pts_dias, pts_acoes = dados.calcula_pontos_dia(
-                    dia, peso, pts_dias, pts_acoes,
-                    limite_total, limite_pts_dias, limite_pts_acoes,
-                )
-
-            lista_registros.append({
-                "dia": dia,
-                "periodo": periodo,
-                "acao": acao,
-                "nivel": nivel_nome,
-                "peso": peso,
-                "nome": nome,
-                "cpf": cpf,
-                "pontos": pts,
-            })
-
-            dias_registrados += 1
-
-            print("\n" + "=" * 50)
-            print(f"REGISTRO DO DIA {dia}")
-            print("=" * 50)
-            print(f"Ação......: {acao}")
-            print(f"Nível.....: {nivel_nome}")
-            print(f"Peso......: {peso:.2f}")
-            print(f"Pontos dia: {pts:.2f}")
-            print(f"Acumulado.: {pts_dias + pts_acoes:.2f} / {limite_total:.2f}")
-            print("=" * 50)
-
-            if pts_dias + pts_acoes >= limite_total:
-                print("\nLimite de 100 pontos atingido!")
-                concluido = True
-                break
-
-            if dia >= limite_dias:
-                if periodo == 3:
-                    print("\nCompletou o período 3.")
-                    concluido = True
-                    break
-
-                prox = periodo + 1
-
-                print(f"\nCompletou o período {periodo} ({limite_dias} dias).")
-
-                resp = input(f"\nIr para o período {prox}? (s/n): ").strip().lower()
-
-                while resp not in ("s", "n"):
-                    print("Resposta inválida, digite s ou n.")
-                    resp = input(f"Ir para o período {prox}? (s/n): ").strip().lower()
-
-                if resp != "s":
-                    break
-
-                periodo = prox
-                limite_dias = lista_periodos[periodo - 1][4]
-                periodos_usados.append(periodo)
-                dia += 1
-                continue
-
-            resp = input("\nRegistrar próximo dia? (s/n): ").strip().lower()
-
-            while resp not in ("s", "n"):
-                print("Resposta inválida, digite s ou n.")
-                resp = input("\nRegistrar próximo dia? (s/n): ").strip().lower()
-
-            dia += 1
-
-            if resp != "s":
-                break
-
-        print("\n" + "=" * 50)
-        print("RESUMO FINAL")
-        print("=" * 50)
-        print(f"Usuário.......: {nome}")
-        print(f"Períodos......: {', '.join(str(p) for p in periodos_usados)}")
-        print(f"Dias..........: {dias_registrados}")
-        print(f"Pontos dias...: {pts_dias:.2f} (limite {limite_pts_dias:.2f})")
-        print(f"Pontos ações..: {pts_acoes:.2f} (limite {limite_pts_acoes:.2f})")
-        print(f"TOTAL.........: {pts_dias + pts_acoes:.2f} (limite {limite_total:.2f})")
-        print("=" * 50)
-
+        mostra_resumo_final(usuario, ciclo, limites)
         pausar()
 
-        if concluido:
-            resp_novo = input("\nDeseja iniciar um novo registro do zero agora? (s/n): ").strip().lower()
+        if not concluido:
+            salva_progresso(progresso, ciclo)
+            return
 
-            while resp_novo not in ("s", "n"):
-                print("Resposta inválida, digite s ou n.")
-                resp_novo = input("Deseja iniciar um novo registro do zero agora? (s/n): ").strip().lower()
+        progresso["ativo"] = False
 
-            progresso["ativo"] = False
-
-            if resp_novo == "s":
-                continue
-
-            break
-
-        progresso["ativo"] = True
-        progresso["periodo"] = periodo
-        progresso["dia"] = dia
-        progresso["pts_dias"] = pts_dias
-        progresso["pts_acoes"] = pts_acoes
-        progresso["periodos_usados"] = periodos_usados
-        progresso["dias_registrados"] = dias_registrados
-        break
+        if not pergunta_sim_nao("Deseja iniciar um novo registro do zero agora?"):
+            return
 
 
 # ---------------------------------------------------------------------------
-# GERENCIAR AÇÕES (CRUD sobre os registros + tratamento de erros)
+# GERENCIAR AÇÕES (CRUD no banco + tratamento de erros)
 # ---------------------------------------------------------------------------
 
-def listar_registros_interativo(lista_registros: list[dict]) -> None:
+def pede_nome_para_busca() -> str:
     """
-    Lista todos os registros de ações feitas até agora.
-    Entrada: lista_registros (list[dict]).
+    Pede o nome exato da ação a buscar, até receber um texto não vazio.
+    Entrada: nome pelo teclado.
+    Saida: nome (str).
+    """
+    nome_da_acao = input("\nBuscar ação (nome exato): ").strip()
+
+    while not dados.nome_valido(nome_da_acao):
+        print("Digite um nome para buscar.")
+        nome_da_acao = input("Buscar ação (nome exato): ").strip()
+
+    return nome_da_acao
+
+
+def pede_novo_nome() -> str:
+    """
+    Pede o novo nome de uma ação até receber um texto não vazio.
+    Entrada: nome pelo teclado.
+    Saida: novo nome (str).
+    """
+    novo_nome = input("\nNovo nome da ação: ").strip()
+
+    while not dados.nome_valido(novo_nome):
+        print("Nome inválido.")
+        novo_nome = input("Novo nome da ação: ").strip()
+
+    return novo_nome
+
+
+def escolhe_registro(conexao, id_usuario: int, verbo: str) -> dict:
+    """
+    Mostra os registros do usuário numerados e pede qual ele quer usar.
+    Entrada: conexao (conexão aberta); id_usuario (int); verbo (str) que
+             completa a pergunta, como "atualizar" ou "excluir".
+    Saida: registro escolhido (dict).
+    Erro: ValueError se o usuário não tem nenhum registro;
+          banco.ErroBanco se o banco falhar.
+    """
+    registros = banco.listar_postagens(conexao, id_usuario)
+
+    if not registros:
+        raise ValueError("Nenhum registro cadastrado ainda.")
+
+    mostra_registros_numerados(registros)
+
+    numero = pede_numero_da_lista(f"Qual desses você quer {verbo}?", len(registros))
+
+    return registros[numero - 1]
+
+
+def listar_registros_interativo(conexao, id_usuario: int) -> None:
+    """
+    Lista todos os registros do usuário gravados no banco.
+    Entrada: conexao (conexão aberta); id_usuario (int).
     Saida: não retorna valor; exibe os registros.
     """
-    if not lista_registros:
-        print("\nNenhum registro ainda.")
+    try:
+        registros = banco.listar_postagens(conexao, id_usuario)
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
     else:
-        mostra_registros_numerados(lista_registros)
+        if registros:
+            mostra_registros_numerados(registros)
+        else:
+            print("\nNenhum registro ainda.")
 
     pausar()
 
 
-def buscar_registro_interativo(lista_registros: list[dict], termo: str) -> None:
+def buscar_registro_interativo(conexao, id_usuario: int) -> None:
     """
-    Busca registros pelo nome da ação e exibe o resultado.
-    Entrada: lista_registros (list[dict]); termo (str).
+    Pergunta o nome de uma ação e mostra os registros do usuário com esse nome.
+    Entrada: conexao (conexão aberta); id_usuario (int); nome pelo teclado.
     Saida: não retorna valor; imprime os registros encontrados.
     """
-    encontrados = dados.buscar_registros(lista_registros, termo)
+    nome_da_acao = pede_nome_para_busca()
 
-    if encontrados:
-        mostra_registros_numerados(encontrados)
+    try:
+        encontrados = banco.buscar_postagens(conexao, id_usuario, nome_da_acao)
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
     else:
-        print("Nada encontrado.")
+        if encontrados:
+            mostra_registros_numerados(encontrados)
+        else:
+            print("Nada encontrado.")
 
     pausar()
 
 
-def atualizar_registro_interativo(lista_registros: list[dict]) -> bool:
+def atualizar_registro_interativo(conexao, id_usuario: int) -> bool:
     """
-    Mostra todos os registros numerados, deixa escolher um pela posição na
-    lista (não por um ID fixo) e atualiza o nome dele. Em caso de erro de
-    validação, pergunta de novo em vez de cancelar a atualização.
-    Entrada: lista_registros (list[dict]); posição escolhida e novo nome
-             informados pelo teclado.
-    Saida: True depois de atualizar com sucesso; False se não havia
-           nenhum registro cadastrado (não há o que atualizar).
+    Deixa escolher um registro pela posição na lista e atualiza o nome da
+    ação no banco. Só registros PENDENTES podem ser alterados.
+    Entrada: conexao (conexão aberta); id_usuario (int); posição e novo nome
+             pelo teclado.
+    Saida: True se atualizou; False se houve erro ou nada foi alterado.
     """
+    sucesso = False
+
     try:
-        if not lista_registros:
-            raise ValueError("Nenhum registro cadastrado ainda.")
-
-        mostra_registros_numerados(lista_registros)
-
-        entrada = input("\nQual desses você quer atualizar? (digite o número da lista acima): ").strip()
-
-        while not dados.inteiro_valido(entrada) or not (1 <= int(entrada) <= len(lista_registros)):
-            print("Número inválido.")
-            entrada = input("Qual desses você quer atualizar? (digite o número da lista acima): ").strip()
-
-        registro = lista_registros[int(entrada) - 1]
+        registro = escolhe_registro(conexao, id_usuario, "atualizar")
 
         mostra_registro(registro)
 
-        nome = input("\nNovo nome da ação (deixe em branco para manter): ").strip()
+        novo_nome = pede_novo_nome()
+        foi_atualizado = banco.atualizar_postagem(conexao, registro["id"], id_usuario, novo_nome)
 
-    except ValueError as e:
-        print(f"\nErro: {e}")
-        sucesso = False
+    except (ValueError, banco.ErroBanco) as erro:
+        print(f"\nErro: {erro}")
 
     else:
-        dados.atualizar_registro(lista_registros, registro, nome)
-        print("Registro atualizado!")
-        sucesso = True
+        if foi_atualizado:
+            print("Registro atualizado!")
+            sucesso = True
+        else:
+            print("Não foi possível atualizar: só registros PENDENTES podem ser alterados.")
 
     finally:
         print("Fim da tentativa de atualização.")
@@ -490,52 +840,37 @@ def atualizar_registro_interativo(lista_registros: list[dict]) -> bool:
     return sucesso
 
 
-def excluir_registro_interativo(lista_registros: list[dict]) -> bool:
+def excluir_registro_interativo(conexao, id_usuario: int) -> bool:
     """
-    Mostra todos os registros numerados, deixa escolher um pela posição na
-    lista (não por um ID fixo), mostra os dados dele e pede confirmação
-    antes de excluir de fato. Em caso de erro de validação, pergunta de
-    novo em vez de cancelar a exclusão.
-    Entrada: lista_registros (list[dict]); posição escolhida informada
+    Deixa escolher um registro pela posição na lista, pede confirmação e
+    exclui no banco. Só registros PENDENTES podem ser excluídos.
+    Entrada: conexao (conexão aberta); id_usuario (int); posição e confirmação
              pelo teclado.
-    Saida: True depois de concluir a tentativa (excluindo ou cancelando
-           na confirmação); False se não havia nenhum registro
-           cadastrado (não há o que excluir).
+    Saida: True se excluiu; False se houve erro, cancelamento ou nada foi
+           excluído.
     """
+    sucesso = False
+    confirmou = False
+
     try:
-        if not lista_registros:
-            raise ValueError("Nenhum registro cadastrado ainda.")
+        registro = escolhe_registro(conexao, id_usuario, "excluir")
 
-        mostra_registros_numerados(lista_registros)
-
-        entrada = input("\nQual desses você quer excluir? (digite o número da lista acima): ").strip()
-
-        while not dados.inteiro_valido(entrada) or not (1 <= int(entrada) <= len(lista_registros)):
-            print("Número inválido.")
-            entrada = input("Qual desses você quer excluir? (digite o número da lista acima): ").strip()
-
-        registro = lista_registros[int(entrada) - 1]
-
-    except ValueError as e:
-        print(f"\nErro: {e}")
-        sucesso = False
-
-    else:
         mostra_registro(registro)
 
-        confirma = input("\nConfirma exclusão? (s/n): ").strip().lower()
+        confirmou = pergunta_sim_nao("Confirma exclusão?")
+        foi_excluido = confirmou and banco.excluir_postagem(conexao, registro["id"], id_usuario)
 
-        while confirma not in ("s", "n"):
-            print("Resposta inválida, digite s ou n.")
-            confirma = input("Confirma exclusão? (s/n): ").strip().lower()
+    except (ValueError, banco.ErroBanco) as erro:
+        print(f"\nErro: {erro}")
 
-        if confirma == "s":
-            dados.excluir_registro(lista_registros, registro)
-            print("Registro excluído!")
-        else:
+    else:
+        if not confirmou:
             print("Exclusão cancelada.")
-
-        sucesso = True
+        elif foi_excluido:
+            print("Registro excluído!")
+            sucesso = True
+        else:
+            print("Não foi possível excluir: só registros PENDENTES podem ser excluídos.")
 
     finally:
         print("Fim da tentativa de exclusão.")
@@ -545,26 +880,92 @@ def excluir_registro_interativo(lista_registros: list[dict]) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# RELATÓRIOS
+# ---------------------------------------------------------------------------
+
+def pede_status() -> str:
+    """
+    Pede o status a filtrar até receber um válido.
+    Entrada: status pelo teclado.
+    Saida: status (str) em maiúsculas: PENDENTE, APROVADO ou REJEITADO.
+    """
+    status = input("\nStatus (PENDENTE, APROVADO ou REJEITADO): ").strip().upper()
+
+    while status not in ("PENDENTE", "APROVADO", "REJEITADO"):
+        print("Status inválido.")
+        status = input("Status (PENDENTE, APROVADO ou REJEITADO): ").strip().upper()
+
+    return status
+
+
+def relatorio_por_status_interativo(conexao, id_usuario: int) -> None:
+    """
+    Pergunta um status e mostra só os registros do usuário com esse status.
+    Entrada: conexao (conexão aberta); id_usuario (int); status pelo teclado.
+    Saida: não retorna valor; exibe os registros.
+    """
+    status = pede_status()
+
+    try:
+        registros = banco.listar_postagens(conexao, id_usuario)
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+    else:
+        filtrados = dados.filtrar_por_status(registros, status)
+
+        if filtrados:
+            mostra_registros_numerados(filtrados)
+        else:
+            print("Nenhum registro com esse status.")
+
+    pausar()
+
+
+def relatorio_por_pontos_interativo(conexao, id_usuario: int) -> None:
+    """
+    Mostra os registros do usuário do maior para o menor número de pontos.
+    Entrada: conexao (conexão aberta); id_usuario (int).
+    Saida: não retorna valor; exibe os registros.
+    """
+    try:
+        registros = banco.listar_postagens(conexao, id_usuario)
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+    else:
+        if registros:
+            mostra_registros_numerados(dados.registros_por_pontos(registros))
+        else:
+            print("\nNenhum registro ainda.")
+
+    pausar()
+
+
+# ---------------------------------------------------------------------------
 # MENUS
 # ---------------------------------------------------------------------------
 
-def menu_principal() -> str:
+def menu_principal(nome_usuario: str | None) -> str:
     """
-    Exibe e valida as opções do menu principal.
-    Entrada: opção informada pelo usuário no teclado.
+    Exibe e valida as opções do menu principal. É a primeira tela do sistema;
+    as opções 1, 2 e 3 pedem a identificação do usuário na primeira vez.
+    Entrada: nome_usuario (str, ou None se ninguém se identificou ainda);
+             opção informada pelo usuário no teclado.
     Saida: opção valida (str).
     """
     print("\n" + "=" * 50)
     print("SISTEMA DE PONTOS AMBIENTAIS LOBO-GUARÁ TECH")
     print("=" * 50)
+    print(f"Usuário: {nome_usuario or 'não identificado'}")
+    print("-" * 50)
     print("0. Sair")
     print("1. Registrar pontos")
     print("2. Gerenciar ações")
     print("3. Relatórios")
+    print("4. Trocar de usuário")
 
     op = input("\nOpção: ").strip()
 
-    while op not in ("0", "1", "2", "3"):
+    while op not in ("0", "1", "2", "3", "4"):
         print("Opção inválida.")
         op = input("Opção: ").strip()
 
@@ -605,8 +1006,8 @@ def menu_relatorios() -> str:
     print("RELATÓRIOS")
     print("=" * 50)
     print("1. Ver registros")
-    print("2. Filtrar por período")
-    print("3. Ações por peso")
+    print("2. Filtrar por status")
+    print("3. Ações por pontos")
     print("4. Voltar")
 
     op = input("\nOpção: ").strip()

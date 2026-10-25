@@ -1,10 +1,10 @@
 """
 Camada de dados e regras de negócio do Sistema de Pontos Ambientais Lobo-guará Tech.
 
-Este modulo concentra: as estruturas de dados (períodos, níveis de impacto,
-registros), as validações de entrada, os cálculos de pontuação e as
-operações de CRUD sobre a lista de registros. Quem cuida da interação com
-o usuário é o módulo menu.py.
+Este modulo concentra: as estruturas de dados (períodos e níveis de impacto),
+as validações de entrada, os cálculos de pontuação e os filtros e ordenações
+dos registros. A interação com o usuário fica em menu.py e o acesso ao banco
+fica em banco.py.
 """
 
 
@@ -19,26 +19,17 @@ periodos: list[tuple] = [
     (3, "16 a 30 dias", "3 pontos por dia", "45 pontos", 30),
 ]
 
-# Cada nível de impacto é uma tupla: (id, nome, peso). É a escala fixa que
-# define quanto uma ação realizada vale; não existe nível "Nenhuma" aqui,
-# porque não fazer nada não é um nível de impacto, é a ausência de um.
+# Cada nível de impacto é uma tupla: (id, nome, peso).
 niveis_impacto: list[tuple] = [
     (1, "Alto", 1.06),
     (2, "Médio", 0.66),
     (3, "Baixo", 0.16),
 ]
 
-# Cada registro é um dicionário: {"dia", "periodo", "acao", "nivel", "peso",
-# "nome", "cpf", "pontos"}. É criado inteiramente durante "Registrar pontos"
-# (a pessoa digita o que fez) e é sobre ele que o CRUD de "Gerenciar ações"
-# atua (listar/buscar/atualizar/excluir) - não existe um catálogo separado.
 registros: list[dict] = []
 
-# Progresso do ciclo de "Registrar pontos" em andamento, pra permitir
-# continuar de onde parou em vez de recomeçar do zero. "ativo" fica False
-# quando ainda não há nada pra continuar (nunca começou, ou o ciclo
-# anterior já foi concluído - limite de pontos atingido ou 30 dias
-# completos).
+# Ciclo de "Registrar pontos" em andamento, para continuar de onde parou.
+# "ativo" é False quando não há nada para continuar.
 progresso: dict = {
     "ativo": False,
     "periodo": 1,
@@ -341,3 +332,53 @@ def registros_por_peso(lista_registros: list[dict]) -> list[dict]:
     Saida: nova lista ordenada, preservando a lista original.
     """
     return sorted(lista_registros, key=pega_peso_registro, reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# REGISTROS VINDOS DO BANCO (link, status e pontos)
+# ---------------------------------------------------------------------------
+
+def url_valida(url: str) -> bool:
+    """
+    Verifica se o link da evidência começa com http:// ou https:// e não
+    tem espaços.
+    Entrada: url (str).
+    Saida: True se valido ou False se invalido.
+    """
+    url = url.strip()
+
+    return url.startswith(("http://", "https://")) and " " not in url and len(url) > 10
+
+
+def filtrar_por_status(lista_registros: list[dict], status: str) -> list[dict]:
+    """
+    Seleciona os registros com o status informado (PENDENTE, APROVADO ou
+    REJEITADO).
+    Entrada: lista_registros (list[dict]); status (str).
+    Saida: nova lista, podendo estar vazia.
+    """
+    registros_filtrados = []
+
+    for registro in lista_registros:
+        if registro["status"].upper() == status.upper():
+            registros_filtrados.append(registro)
+
+    return registros_filtrados
+
+
+def pega_pontos_registro(registro: dict) -> float:
+    """
+    Obtém os pontos de um registro para ordenar a lista.
+    Entrada: registro (dict).
+    Saida: pontos (float).
+    """
+    return registro["pontos"]
+
+
+def registros_por_pontos(lista_registros: list[dict]) -> list[dict]:
+    """
+    Ordena os registros do maior para o menor número de pontos.
+    Entrada: lista_registros (list[dict]).
+    Saida: nova lista ordenada, preservando a original.
+    """
+    return sorted(lista_registros, key=pega_pontos_registro, reverse=True)
