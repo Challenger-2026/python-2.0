@@ -8,9 +8,8 @@ fica em banco.py.
 """
 
 
-# ---------------------------------------------------------------------------
+
 # DADOS DO SISTEMA
-# ---------------------------------------------------------------------------
 
 # Cada período é uma tupla: (id, faixa_dias, pontos_por_dia_texto, total_texto, limite_dias)
 periodos: list[tuple] = [
@@ -26,7 +25,9 @@ niveis_impacto: list[tuple] = [
     (3, "Baixo", 0.16),
 ]
 
-registros: list[dict] = []
+# Respostas dadas em "Registrar pontos", uma por dia registrado (usadas na
+# exportação JSON). Guarda o ciclo em andamento e é limpa a cada ciclo novo.
+respostas_usuario: list[dict] = []
 
 # Ciclo de "Registrar pontos" em andamento, para continuar de onde parou.
 # "ativo" é False quando não há nada para continuar.
@@ -44,63 +45,29 @@ LIMITE_TOTAL: float = 100.0
 LIMITE_DIAS: float = 68.0
 LIMITE_ACOES: float = 31.80
 
-
-# ---------------------------------------------------------------------------
 # VALIDAÇÃO
-# ---------------------------------------------------------------------------
 
 def nome_valido(nome: str) -> bool:
     """
-    Verifica se o nome nÃo esta vazio.
+    Verifica se o nome não está vazio.
     Entrada: nome (str).
     Saida: True se valido ou False se invalido.
     """
     return bool(nome.strip())
 
 
-def nome_completo_valido(nome: str) -> bool:
+def cpf_formato_valido(cpf: str) -> bool:
     """
-    Verifica se o nome completo tem pelo menos duas partes separadas por
-    espaço (nome e sobrenome) somando pelo menos 3 letras - evita nomes
-    vazios, de uma letra só ou sem sobrenome.
-    Entrada: nome (str).
-    Saida: True se valido ou False se invalido.
-    """
-    nome = nome.strip()
-    partes = nome.split()
-
-    return len(partes) >= 2 and len(nome.replace(" ", "")) >= 3
-
-
-def cpf_valido(cpf: str) -> bool:
-    """
-    Valida o formato e os digitos verificadores do CPF.
+    Valida só o formato do CPF: 11 números, não todos iguais. Os dígitos
+    verificadores não são conferidos porque o CPF é procurado no banco logo
+    em seguida, e os CPFs cadastrados ali são fictícios.
     Entrada: cpf (str), contendo somente os 11 numeros.
     Saida: True se valido ou False se invalido.
     """
     cpf = cpf.strip()
 
-    if len(cpf) != 11 or not cpf.isascii() or not cpf.isdigit():
-        return False
-
-    if cpf == cpf[0] * 11:
-        return False
-
-    for tamanho in (9, 10):
-        soma = 0
-
-        for i in range(tamanho):
-            soma += int(cpf[i]) * (tamanho + 1 - i)
-
-        digito = (soma * 10) % 11
-
-        if digito == 10:
-            digito = 0
-
-        if int(cpf[tamanho]) != digito:
-            return False
-
-    return True
+    # 11 dígitos e não pode ser sequência repetida (ex.: 11111111111)
+    return len(cpf) == 11 and cpf.isascii() and cpf.isdigit() and cpf != cpf[0] * 11
 
 
 def inteiro_valido(texto: str) -> bool:
@@ -137,10 +104,7 @@ def nivel_impacto_valido(niveis_impacto: list[tuple], nivel: int) -> bool:
 
     return False
 
-
-# ---------------------------------------------------------------------------
 # CÁLCULO DE PONTOS
-# ---------------------------------------------------------------------------
 
 def base_diaria(dia: int) -> float:
     """
@@ -202,22 +166,27 @@ def calcula_pontos_dia(
              sistema.
     Saida: tupla (pontos_do_dia, novo_pts_dias, novo_pts_acoes).
     """
+    # Quanto ainda cabe no limite total
     restante_total = max(0.0, limite_total - pts_dias - pts_acoes)
 
+    # Pontos dos dias: base diária limitada pelo teto dos dias e pelo restante
     pontos_dias = min(
         base_diaria(dia),
         max(0.0, limite_pts_dias - pts_dias),
         restante_total,
     )
 
+    # Desconta os pontos dos dias do que ainda cabe
     restante_total = max(0.0, restante_total - pontos_dias)
 
+    # Pontos da ação: peso do nível limitado pelo teto das ações e pelo restante
     pontos_acoes = min(
         peso,
         max(0.0, limite_pts_acoes - pts_acoes),
         restante_total,
     )
 
+    # Atualiza os acumulados, arredondando para 2 casas
     novo_pts_dias = round(pts_dias + pontos_dias, 2)
     novo_pts_acoes = round(pts_acoes + pontos_acoes, 2)
     pts_do_dia = round(pontos_dias + pontos_acoes, 2)
@@ -225,118 +194,7 @@ def calcula_pontos_dia(
     return pts_do_dia, novo_pts_dias, novo_pts_acoes
 
 
-# ---------------------------------------------------------------------------
-# CRUD DE REGISTROS
-# ---------------------------------------------------------------------------
-
-def buscar_registros(lista_registros: list[dict], termo: str) -> list[dict]:
-    """
-    Busca registros cuja ação tenha exatamente o nome informado (sem
-    diferenciar maiúsculas/minúsculas).
-    Entrada: lista_registros (list[dict]); termo (str).
-    Saida: lista com os mesmos dicionários encontrados (não são cópias),
-           podendo estar vazia.
-    """
-    encontrados = []
-
-    for r in lista_registros:
-        if termo.lower() == r["acao"].lower():
-            encontrados.append(r)
-
-    return encontrados
-
-
-def atualizar_registro(lista_registros: list[dict], registro: dict, nome: str = "") -> bool:
-    """
-    Atualiza o nome da ação de um registro existente; nome vazio mantem o
-    valor atual. Nível, peso e pontos não são editáveis aqui de propósito:
-    eles definem quanto aquele dia valeu e já foram calculados no momento
-    do registro - se precisam mudar, o registro deve ser excluido e um
-    novo criado em "Registrar pontos".
-    Entrada: lista_registros (list[dict]); registro (dict) que deve ser um
-             dos elementos de lista_registros; nome (texto, pode vir
-             vazio), já validado por quem chama a função.
-    Saida: True se o registro pertencia a lista_registros e foi atualizado,
-           False caso contrario.
-    """
-    if registro not in lista_registros:
-        return False
-
-    if nome:
-        registro["acao"] = nome
-
-    return True
-
-
-def excluir_registro(lista_registros: list[dict], registro: dict) -> bool:
-    """
-    Exclui um registro existente.
-    Entrada: lista_registros (list[dict]); registro (dict) que deve ser um
-             dos elementos de lista_registros.
-    Saida: True se o registro foi encontrado e excluido, False caso
-           contrário.
-    """
-    if registro not in lista_registros:
-        return False
-
-    lista_registros.remove(registro)
-    return True
-
-
-# ---------------------------------------------------------------------------
-# RELATÓRIOS E FILTROS
-# ---------------------------------------------------------------------------
-
-def filtrar_por_periodo(lista_periodos: list[tuple], lista_registros: list[dict], p: int) -> list[dict]:
-    """
-    Seleciona os registros cujo dia pertence a faixa do periodo buscado
-    (1 a 7, 8 a 15 ou 16 a 30), pela posicao real do dia - nao pela meta
-    que a pessoa escolheu ao registrar (um dia 3 gravado dentro de uma
-    meta "periodo 2" continua sendo dia de periodo 1 nessa busca). Os
-    dicionarios retornados sao copias com o campo "periodo" ajustado para
-    o periodo buscado, pra bater com a busca feita; os registros originais
-    em lista_registros nao sao alterados.
-    Entrada: lista_periodos (list[tuple]); lista_registros (list[dict]);
-             p (int), numero do periodo buscado.
-    Saida: lista de copias dos dicionarios encontrados, podendo estar
-           vazia.
-    """
-    limite_superior = lista_periodos[p - 1][4]
-    limite_inferior = 1 if p == 1 else lista_periodos[p - 2][4] + 1
-
-    filtrados = []
-
-    for r in lista_registros:
-        if limite_inferior <= r["dia"] <= limite_superior:
-            copia = dict(r)
-            copia["periodo"] = p
-            filtrados.append(copia)
-
-    return filtrados
-
-
-def pega_peso_registro(registro: dict) -> float:
-    """
-    Obtem o peso de um registro para ordenar a lista.
-    Entrada: registro (dict), com dia, periodo, acao, nivel, peso, nome,
-             cpf e pontos.
-    Saida: peso da ação realizada nesse registro (float).
-    """
-    return registro["peso"]
-
-
-def registros_por_peso(lista_registros: list[dict]) -> list[dict]:
-    """
-    Ordena os registros do maior peso de ação para o menor.
-    Entrada: lista_registros (list[dict]).
-    Saida: nova lista ordenada, preservando a lista original.
-    """
-    return sorted(lista_registros, key=pega_peso_registro, reverse=True)
-
-
-# ---------------------------------------------------------------------------
 # REGISTROS VINDOS DO BANCO (link, status e pontos)
-# ---------------------------------------------------------------------------
 
 def url_valida(url: str) -> bool:
     """
@@ -360,6 +218,7 @@ def filtrar_por_status(lista_registros: list[dict], status: str) -> list[dict]:
     registros_filtrados = []
 
     for registro in lista_registros:
+        # Compara em maiúsculas para ignorar diferença de caixa
         if registro["status"].upper() == status.upper():
             registros_filtrados.append(registro)
 
@@ -382,3 +241,37 @@ def registros_por_pontos(lista_registros: list[dict]) -> list[dict]:
     Saida: nova lista ordenada, preservando a original.
     """
     return sorted(lista_registros, key=pega_pontos_registro, reverse=True)
+
+
+def pega_pontos_usuario(usuario: dict) -> float:
+    """
+    Obtém os pontos de um usuário para ordenar o ranking.
+    Entrada: usuario (dict) com a chave "pontos".
+    Saida: pontos (float).
+    """
+    return usuario["pontos"]
+
+
+def ranking_de_usuarios(lista_usuarios: list[dict]) -> list[dict]:
+    """
+    Ordena os usuários do maior para o menor saldo de pontos.
+    Entrada: lista_usuarios (list[dict]).
+    Saida: nova lista ordenada, preservando a original.
+    """
+    return sorted(lista_usuarios, key=pega_pontos_usuario, reverse=True)
+
+
+def filtrar_por_comunidade(lista_registros: list[dict], id_comunidade: int) -> list[dict]:
+    """
+    Seleciona as postagens de uma comunidade.
+    Entrada: lista_registros (list[dict]) com a chave "id_comunidade";
+             id_comunidade (int).
+    Saida: nova lista, podendo estar vazia.
+    """
+    registros_filtrados = []
+
+    for registro in lista_registros:
+        if registro["id_comunidade"] == id_comunidade:
+            registros_filtrados.append(registro)
+
+    return registros_filtrados

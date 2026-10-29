@@ -12,8 +12,10 @@ as "*_interativo" juntam essas peças em uma tela completa.
 
 import textwrap
 
+import api
 import banco
 import dados
+import exportar
 
 # Resultado de decide_proximo_passo: o que fazer depois de registrar um dia.
 PASSO_SEGUIR: str = "seguir"
@@ -21,9 +23,9 @@ PASSO_PARAR: str = "parar"
 PASSO_CONCLUIDO: str = "concluido"
 
 
-# ---------------------------------------------------------------------------
+
 # PERGUNTAS REUTILIZÁVEIS
-# ---------------------------------------------------------------------------
+
 
 def pausar() -> None:
     """
@@ -59,6 +61,7 @@ def pede_numero_da_lista(pergunta: str, quantidade: int) -> int:
     """
     escolha = input(f"\n{pergunta} (número): ").strip()
 
+    # Repete até receber um inteiro dentro da lista
     while not dados.inteiro_valido(escolha) or not (1 <= int(escolha) <= quantidade):
         print("Número inválido.")
         escolha = input(f"{pergunta} (número): ").strip()
@@ -78,11 +81,15 @@ def pede_cpf_valido() -> str:
     """
     cpf = input("\nCPF (só números, ou 0 para voltar): ").strip()
 
-    while cpf != "0" and not dados.cpf_valido(cpf):
-        print("CPF inválido, digite os 11 números de um CPF válido.")
+    while cpf != "0" and not dados.cpf_formato_valido(cpf):
+        print("CPF inválido, digite os 11 números do CPF.")
         cpf = input("CPF (só números, ou 0 para voltar): ").strip()
 
-    return "" if cpf == "0" else cpf
+    # String vazia indica que o usuário desistiu
+    if cpf == "0":
+        return ""
+
+    return cpf
 
 
 def pede_usuario_cadastrado(conexao) -> dict | None:
@@ -148,9 +155,9 @@ def identificar_usuario(conexao) -> tuple[dict | None, int | None]:
     return usuario, escolhe_comunidade(comunidades)
 
 
-# ---------------------------------------------------------------------------
+
 # TABELAS NA TELA
-# ---------------------------------------------------------------------------
+
 
 def mostra_periodos(lista_periodos: list[tuple]) -> None:
     """
@@ -238,9 +245,19 @@ def mostra_registros_numerados(lista_registros: list[dict]) -> None:
     print(borda)
 
     for posicao, registro in enumerate(lista_registros, start=1):
-        linhas_da_acao = textwrap.wrap(registro["acao"], largura_acao) or [""]
+        # Quebra ações longas em várias linhas sem estourar a borda da tabela
+        texto_da_acao = registro["acao"]
+
+        if texto_da_acao is None:
+            texto_da_acao = ""
+
+        linhas_da_acao = textwrap.wrap(texto_da_acao, largura_acao)
+
+        if not linhas_da_acao:
+            linhas_da_acao = [""]
 
         for indice, linha_da_acao in enumerate(linhas_da_acao):
+            # Só a primeira linha mostra status e pontos
             if indice == 0:
                 print(
                     f"| {posicao:>3} | {linha_da_acao:<{largura_acao}} | "
@@ -252,13 +269,12 @@ def mostra_registros_numerados(lista_registros: list[dict]) -> None:
         print(borda)
 
 
-# ---------------------------------------------------------------------------
+
 # REGISTRO DE PONTOS: ciclo (período inicial, retomada e progresso)
 #
-# O "ciclo" é um dict com o andamento do registro: periodo, dia, pts_dias,
-# pts_acoes, periodos_usados e dias_registrados. É o mesmo formato do dict
-# "progresso" de dados.py, que guarda o ciclo quando o usuário para no meio.
-# ---------------------------------------------------------------------------
+# O "ciclo" é um dict com o andamento do registro (periodo, dia, pontos...),
+# no mesmo formato do dict "progresso" de dados.py, usado para retomar.
+
 
 def limite_de_dias(lista_periodos: list[tuple], periodo: int) -> int:
     """
@@ -266,6 +282,7 @@ def limite_de_dias(lista_periodos: list[tuple], periodo: int) -> int:
     Entrada: lista_periodos (list[tuple]); periodo (int), de 1 a 3.
     Saida: último dia do período (int).
     """
+    # A posição 4 da tupla é o último dia do período
     return lista_periodos[periodo - 1][4]
 
 
@@ -315,6 +332,7 @@ def retoma_ciclo(progresso: dict) -> dict:
         "dia": progresso["dia"],
         "pts_dias": progresso["pts_dias"],
         "pts_acoes": progresso["pts_acoes"],
+        # list() copia a lista para não alterar o progresso salvo
         "periodos_usados": list(progresso["periodos_usados"]),
         "dias_registrados": progresso["dias_registrados"],
     }
@@ -356,9 +374,7 @@ def pergunta_continuar_ou_recomecar(progresso: dict) -> bool:
     return resposta == "c"
 
 
-# ---------------------------------------------------------------------------
 # REGISTRO DE PONTOS: perguntas sobre a ação do dia
-# ---------------------------------------------------------------------------
 
 def pede_nivel_impacto(niveis_impacto: list[tuple]) -> int:
     """
@@ -426,9 +442,7 @@ def pede_dados_da_acao(niveis_impacto: list[tuple]) -> dict:
     }
 
 
-# ---------------------------------------------------------------------------
 # REGISTRO DE PONTOS: um dia
-# ---------------------------------------------------------------------------
 
 def mostra_cabecalho_do_dia(ciclo: dict) -> None:
     """
@@ -482,6 +496,7 @@ def registra_dia_com_acao(
 
     dados_da_acao = pede_dados_da_acao(niveis_impacto)
 
+    # Guarda os acumulados para desfazer se o banco recusar o registro
     pts_dias_antes = ciclo["pts_dias"]
     pts_acoes_antes = ciclo["pts_acoes"]
 
@@ -497,12 +512,14 @@ def registra_dia_com_acao(
         )
     except banco.ErroBanco as erro:
         print(f"\nErro: {erro}")
+        # Restaura os pontos de antes do dia
         ciclo["pts_dias"] = pts_dias_antes
         ciclo["pts_acoes"] = pts_acoes_antes
         return None
 
     return {
         "acao": dados_da_acao["acao"],
+        "url": dados_da_acao["url"],
         "nivel": dados_da_acao["nivel"],
         "peso": dados_da_acao["peso"],
         "pontos": pontos_do_dia,
@@ -525,13 +542,28 @@ def registra_dia(
     """
     mostra_cabecalho_do_dia(ciclo)
 
-    if pergunta_sim_nao("Fez alguma ação ambiental nesse dia?"):
+    fez_acao = pergunta_sim_nao("Fez alguma ação ambiental nesse dia?")
+
+    if fez_acao:
         resultado = registra_dia_com_acao(conexao, usuario, id_comunidade, ciclo, niveis_impacto, limites)
 
         if resultado is None:
             return False
     else:
-        resultado = {"acao": "Nenhuma ação", "nivel": "Nenhuma", "peso": 0.0, "pontos": 0.0}
+        # Dia sem ação: vale 0 pontos e não vai para o banco
+        resultado = {"acao": "Nenhuma ação", "url": "", "nivel": "Nenhuma", "peso": 0.0, "pontos": 0.0}
+
+    # Guarda a resposta do dia para a exportação em JSON
+    dados.respostas_usuario.append({
+        "periodo": ciclo["periodo"],
+        "dia": ciclo["dia"],
+        "fez_acao": fez_acao,
+        "acao": resultado["acao"],
+        "nivel": resultado["nivel"],
+        "peso": resultado["peso"],
+        "url": resultado["url"],
+        "pontos": round(resultado["pontos"], 2),
+    })
 
     ciclo["dias_registrados"] += 1
     mostra_resultado_do_dia(resultado, ciclo, limites[0])
@@ -539,9 +571,7 @@ def registra_dia(
     return True
 
 
-# ---------------------------------------------------------------------------
 # REGISTRO DE PONTOS: o que fazer depois de cada dia
-# ---------------------------------------------------------------------------
 
 def decide_proximo_dia(ciclo: dict) -> str:
     """
@@ -552,9 +582,13 @@ def decide_proximo_dia(ciclo: dict) -> str:
     """
     quer_continuar = pergunta_sim_nao("Registrar próximo dia?")
 
+    # Avança o dia mesmo se parar, para retomar do dia seguinte
     ciclo["dia"] += 1
 
-    return PASSO_SEGUIR if quer_continuar else PASSO_PARAR
+    if quer_continuar:
+        return PASSO_SEGUIR
+
+    return PASSO_PARAR
 
 
 def decide_fim_do_periodo(ciclo: dict, lista_periodos: list[tuple]) -> str:
@@ -577,6 +611,7 @@ def decide_fim_do_periodo(ciclo: dict, lista_periodos: list[tuple]) -> str:
     if not pergunta_sim_nao(f"Ir para o período {proximo_periodo}?"):
         return PASSO_PARAR
 
+    # Passa para o período seguinte e já avança o dia
     ciclo["periodo"] = proximo_periodo
     ciclo["periodos_usados"].append(proximo_periodo)
     ciclo["dia"] += 1
@@ -591,6 +626,7 @@ def decide_proximo_passo(ciclo: dict, lista_periodos: list[tuple], limite_total:
     Entrada: ciclo (dict); lista_periodos (list[tuple]); limite_total (float).
     Saida: PASSO_SEGUIR, PASSO_PARAR ou PASSO_CONCLUIDO.
     """
+    # Ordem: limite de pontos, fim do período e, por último, próximo dia
     if ciclo["pts_dias"] + ciclo["pts_acoes"] >= limite_total:
         print("\nLimite de 100 pontos atingido!")
         return PASSO_CONCLUIDO
@@ -640,7 +676,13 @@ def mostra_resumo_final(usuario: dict, ciclo: dict, limites: tuple[float, float,
     Saida: não retorna valor; imprime o resumo.
     """
     limite_total, limite_pts_dias, limite_pts_acoes = limites
-    periodos_usados = ", ".join(str(p) for p in ciclo["periodos_usados"])
+    periodos_usados = ""
+
+    for p in ciclo["periodos_usados"]:
+        if periodos_usados:
+            periodos_usados += ", "
+
+        periodos_usados += str(p)
 
     print("\n" + "=" * 50)
     print("RESUMO FINAL")
@@ -685,14 +727,20 @@ def registrar_pontos(
         return
 
     limites = (limite_total, limite_pts_dias, limite_pts_acoes)
-    continuar_de_onde_parou = progresso["ativo"] and pergunta_continuar_ou_recomecar(progresso)
+    # Só pergunta se continua quando há progresso salvo
+    continuar_de_onde_parou = False
+
+    if progresso["ativo"]:
+        continuar_de_onde_parou = pergunta_continuar_ou_recomecar(progresso)
 
     while True:
         if continuar_de_onde_parou:
             ciclo = retoma_ciclo(progresso)
         else:
             ciclo = inicia_novo_ciclo(lista_periodos)
+            dados.respostas_usuario.clear()
 
+        # Nas próximas voltas do loop, os ciclos começam do zero
         continuar_de_onde_parou = False
 
         concluido = executa_ciclo(conexao, usuario, id_comunidade, ciclo, lista_periodos, niveis_impacto, limites)
@@ -700,6 +748,7 @@ def registrar_pontos(
         mostra_resumo_final(usuario, ciclo, limites)
         pausar()
 
+        # Parou no meio: guarda o progresso para retomar depois
         if not concluido:
             salva_progresso(progresso, ciclo)
             return
@@ -710,9 +759,7 @@ def registrar_pontos(
             return
 
 
-# ---------------------------------------------------------------------------
 # GERENCIAR AÇÕES (CRUD no banco + tratamento de erros)
-# ---------------------------------------------------------------------------
 
 def pede_nome_para_busca() -> str:
     """
@@ -815,6 +862,7 @@ def atualizar_registro_interativo(conexao, id_usuario: int) -> bool:
     """
     sucesso = False
 
+    # except trata erros esperados, else mostra o resultado e finally sempre roda
     try:
         registro = escolhe_registro(conexao, id_usuario, "atualizar")
 
@@ -852,13 +900,18 @@ def excluir_registro_interativo(conexao, id_usuario: int) -> bool:
     sucesso = False
     confirmou = False
 
+    # Mesmo esquema de try/except/else/finally do atualizar
     try:
         registro = escolhe_registro(conexao, id_usuario, "excluir")
 
         mostra_registro(registro)
 
         confirmou = pergunta_sim_nao("Confirma exclusão?")
-        foi_excluido = confirmou and banco.excluir_postagem(conexao, registro["id"], id_usuario)
+        # Só exclui no banco se o usuário confirmou
+        foi_excluido = False
+
+        if confirmou:
+            foi_excluido = banco.excluir_postagem(conexao, registro["id"], id_usuario)
 
     except (ValueError, banco.ErroBanco) as erro:
         print(f"\nErro: {erro}")
@@ -879,9 +932,8 @@ def excluir_registro_interativo(conexao, id_usuario: int) -> bool:
     return sucesso
 
 
-# ---------------------------------------------------------------------------
 # RELATÓRIOS
-# ---------------------------------------------------------------------------
+
 
 def pede_status() -> str:
     """
@@ -940,9 +992,135 @@ def relatorio_por_pontos_interativo(conexao, id_usuario: int) -> None:
     pausar()
 
 
-# ---------------------------------------------------------------------------
+# EXPORTAÇÃO PARA JSON
+
+def exportar_registros_interativo(conexao, usuario: dict) -> None:
+    """
+    Exporta para JSON as ações do usuário que estão no banco (dados do CRUD).
+    Entrada: conexao (conexão aberta); usuario (dict com id e nome).
+    Saida: não retorna valor; mostra onde o arquivo foi gravado.
+    """
+    try:
+        registros = banco.listar_postagens(conexao, usuario["id"])
+
+        if not registros:
+            print("\nNenhum registro para exportar.")
+        else:
+            conteudo = exportar.monta_exportacao_crud(usuario, registros)
+            caminho = exportar.salvar_json(f"crud_usuario_{usuario['id']}.json", conteudo)
+            print(f"\n{len(registros)} registro(s) exportado(s) para:\n{caminho}")
+    except (banco.ErroBanco, exportar.ErroExportacao) as erro:
+        print(f"\nErro: {erro}")
+
+    pausar()
+
+
+def exportar_respostas_interativo(usuario: dict, id_comunidade: int | None) -> None:
+    """
+    Exporta para JSON o que o usuário respondeu em "Registrar pontos".
+    Entrada: usuario (dict com id e nome); id_comunidade (int, ou None).
+    Saida: não retorna valor; mostra onde o arquivo foi gravado.
+    """
+    if not dados.respostas_usuario:
+        print("\nVocê ainda não registrou nenhum dia em \"Registrar pontos\".")
+        pausar()
+        return
+
+    try:
+        conteudo = exportar.monta_exportacao_respostas(usuario, id_comunidade, dados.respostas_usuario)
+        caminho = exportar.salvar_json(f"respostas_usuario_{usuario['id']}.json", conteudo)
+    except exportar.ErroExportacao as erro:
+        print(f"\nErro: {erro}")
+    else:
+        print(f"\n{len(dados.respostas_usuario)} dia(s) exportado(s) para:\n{caminho}")
+
+    pausar()
+
+
+# CONSULTAS NA API PÚBLICA
+
+
+def ranking_api_interativo() -> None:
+    """
+    Busca os usuários na API e mostra o ranking por pontos.
+    Entrada: não recebe parâmetros.
+    Saida: não retorna valor; exibe o ranking.
+    """
+    print("\nConsultando a API (pode demorar na primeira vez)...")
+
+    try:
+        usuarios = api.listar_usuarios_api()
+    except api.ErroApi as erro:
+        print(f"\nErro: {erro}")
+    else:
+        ranking = dados.ranking_de_usuarios(usuarios)
+        borda = "+" + "-" * 5 + "+" + "-" * 27 + "+" + "-" * 12 + "+" + "-" * 10 + "+"
+
+        print("\n" + borda)
+        print(f"| {'Pos':>3} | {'Nome':<25} | {'Perfil':<10} | {'Pontos':>8} |")
+        print(borda)
+
+        for posicao, usuario in enumerate(ranking, start=1):
+            print(
+                f"| {posicao:>3} | {usuario['nome'][:25]:<25} | "
+                f"{usuario['perfil']:<10} | {usuario['pontos']:>8.1f} |"
+            )
+
+        print(borda)
+
+    pausar()
+
+
+def escolhe_comunidade_api(comunidades: list[dict]) -> int:
+    """
+    Mostra as comunidades da API numeradas e pede uma delas.
+    Entrada: comunidades (list[dict]) com id e nome, não vazia.
+    Saida: id (int) da comunidade escolhida.
+    """
+    print("\nComunidades:")
+
+    for posicao, comunidade in enumerate(comunidades, start=1):
+        print(f"{posicao}. {comunidade['nome']}")
+
+    escolha = pede_numero_da_lista("Escolha a comunidade", len(comunidades))
+
+    return comunidades[escolha - 1]["id"]
+
+
+def postagens_da_comunidade_api_interativo() -> None:
+    """
+    Busca as comunidades e as postagens na API e mostra as postagens da
+    comunidade escolhida pelo usuário.
+    Entrada: não recebe parâmetros; comunidade pelo teclado.
+    Saida: não retorna valor; exibe as postagens.
+    """
+    print("\nConsultando a API (pode demorar na primeira vez)...")
+
+    try:
+        comunidades = api.listar_comunidades_api()
+        postagens = api.listar_postagens_api()
+    except api.ErroApi as erro:
+        print(f"\nErro: {erro}")
+        pausar()
+        return
+
+    if not comunidades:
+        print("\nA API não tem comunidades cadastradas.")
+        pausar()
+        return
+
+    id_comunidade = escolhe_comunidade_api(comunidades)
+    postagens_filtradas = dados.filtrar_por_comunidade(postagens, id_comunidade)
+
+    if postagens_filtradas:
+        mostra_registros_numerados(postagens_filtradas)
+    else:
+        print("\nNenhuma postagem nessa comunidade.")
+
+    pausar()
+
+
 # MENUS
-# ---------------------------------------------------------------------------
 
 def menu_principal(nome_usuario: str | None) -> str:
     """
@@ -955,17 +1133,22 @@ def menu_principal(nome_usuario: str | None) -> str:
     print("\n" + "=" * 50)
     print("SISTEMA DE PONTOS AMBIENTAIS LOBO-GUARÁ TECH")
     print("=" * 50)
-    print(f"Usuário: {nome_usuario or 'não identificado'}")
+    if nome_usuario is None:
+        nome_usuario = "não identificado"
+
+    print(f"Usuário: {nome_usuario}")
     print("-" * 50)
     print("0. Sair")
     print("1. Registrar pontos")
     print("2. Gerenciar ações")
     print("3. Relatórios")
     print("4. Trocar de usuário")
+    print("5. Consultar API pública")
 
     op = input("\nOpção: ").strip()
 
-    while op not in ("0", "1", "2", "3", "4"):
+    # Repete até digitar uma opção existente
+    while op not in ("0", "1", "2", "3", "4", "5"):
         print("Opção inválida.")
         op = input("Opção: ").strip()
 
@@ -981,15 +1164,38 @@ def menu_crud() -> str:
     print("\n" + "=" * 50)
     print("GERENCIAR AÇÕES")
     print("=" * 50)
-    print("1. Listar")
-    print("2. Buscar")
-    print("3. Atualizar")
-    print("4. Excluir")
-    print("5. Voltar")
+    print("1. Inserir (registrar ação)")
+    print("2. Listar")
+    print("3. Buscar")
+    print("4. Atualizar")
+    print("5. Excluir")
+    print("6. Voltar")
 
     op = input("\nOpção: ").strip()
 
-    while op not in ("1", "2", "3", "4", "5"):
+    while op not in ("1", "2", "3", "4", "5", "6"):
+        print("Opção inválida.")
+        op = input("Opção: ").strip()
+
+    return op
+
+
+def menu_api() -> str:
+    """
+    Exibe e valida as opções de consulta à API pública.
+    Entrada: opção informada pelo usuário no teclado.
+    Saida: opção valida (str).
+    """
+    print("\n" + "=" * 50)
+    print("CONSULTAR API PÚBLICA")
+    print("=" * 50)
+    print("1. Ranking de usuários")
+    print("2. Postagens de uma comunidade")
+    print("3. Voltar")
+
+    op = input("\nOpção: ").strip()
+
+    while op not in ("1", "2", "3"):
         print("Opção inválida.")
         op = input("Opção: ").strip()
 
@@ -1008,11 +1214,13 @@ def menu_relatorios() -> str:
     print("1. Ver registros")
     print("2. Filtrar por status")
     print("3. Ações por pontos")
-    print("4. Voltar")
+    print("4. Exportar ações do banco (JSON)")
+    print("5. Exportar minhas respostas (JSON)")
+    print("6. Voltar")
 
     op = input("\nOpção: ").strip()
 
-    while op not in ("1", "2", "3", "4"):
+    while op not in ("1", "2", "3", "4", "5", "6"):
         print("Opção inválida.")
         op = input("Opção: ").strip()
 

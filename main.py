@@ -22,38 +22,67 @@ def garante_identificacao(conexao, sessao: dict) -> bool:
     Entrada: conexao (conexão aberta); sessao (dict) que é atualizado.
     Saida: True se há um usuário identificado; False se ele desistiu.
     """
+    # Só pergunta o CPF se ninguém foi identificado ainda
     if sessao["usuario"] is None:
         sessao["usuario"], sessao["id_comunidade"] = menu.identificar_usuario(conexao)
 
     return sessao["usuario"] is not None
 
 
-def executa_menu_crud(conexao, id_usuario: int) -> None:
+def registra_pontos_da_sessao(conexao, sessao: dict) -> None:
     """
-    Mostra o submenu "Gerenciar ações" até o usuário voltar.
-    Entrada: conexao (conexão aberta); id_usuario (int).
+    Abre o fluxo "Registrar pontos" para o usuário da sessão. É o INSERT do
+    sistema: cada ação registrada vira uma postagem no banco. Usada pelo menu
+    principal e pelo submenu "Gerenciar ações".
+    Entrada: conexao (conexão aberta); sessao (dict) com usuario e
+             id_comunidade.
     Saida: não retorna valor.
     """
+    menu.registrar_pontos(
+        conexao,
+        sessao["usuario"],
+        sessao["id_comunidade"],
+        dados.periodos,
+        dados.niveis_impacto,
+        dados.progresso,
+        dados.LIMITE_TOTAL,
+        dados.LIMITE_DIAS,
+        dados.LIMITE_ACOES,
+    )
+
+
+def executa_menu_crud(conexao, sessao: dict) -> None:
+    """
+    Mostra o submenu "Gerenciar ações" (o CRUD) até o usuário voltar.
+    Entrada: conexao (conexão aberta); sessao (dict) com usuario e
+             id_comunidade.
+    Saida: não retorna valor.
+    """
+    id_usuario = sessao["usuario"]["id"]
+
     while True:
         opcao = menu.menu_crud()
 
         match opcao:
             case "1":
-                menu.listar_registros_interativo(conexao, id_usuario)
+                registra_pontos_da_sessao(conexao, sessao)
             case "2":
-                menu.buscar_registro_interativo(conexao, id_usuario)
+                menu.listar_registros_interativo(conexao, id_usuario)
             case "3":
-                menu.atualizar_registro_interativo(conexao, id_usuario)
+                menu.buscar_registro_interativo(conexao, id_usuario)
             case "4":
-                menu.excluir_registro_interativo(conexao, id_usuario)
+                menu.atualizar_registro_interativo(conexao, id_usuario)
             case "5":
+                menu.excluir_registro_interativo(conexao, id_usuario)
+            case "6":
                 return
 
 
-def executa_menu_relatorios(conexao, id_usuario: int) -> None:
+def executa_menu_relatorios(conexao, usuario: dict, id_comunidade: int | None) -> None:
     """
     Mostra o submenu "Relatórios" até o usuário voltar.
-    Entrada: conexao (conexão aberta); id_usuario (int).
+    Entrada: conexao (conexão aberta); usuario (dict com id e nome);
+             id_comunidade (int, ou None).
     Saida: não retorna valor.
     """
     while True:
@@ -61,12 +90,35 @@ def executa_menu_relatorios(conexao, id_usuario: int) -> None:
 
         match opcao:
             case "1":
-                menu.listar_registros_interativo(conexao, id_usuario)
+                menu.listar_registros_interativo(conexao, usuario["id"])
             case "2":
-                menu.relatorio_por_status_interativo(conexao, id_usuario)
+                menu.relatorio_por_status_interativo(conexao, usuario["id"])
             case "3":
-                menu.relatorio_por_pontos_interativo(conexao, id_usuario)
+                menu.relatorio_por_pontos_interativo(conexao, usuario["id"])
             case "4":
+                menu.exportar_registros_interativo(conexao, usuario)
+            case "5":
+                menu.exportar_respostas_interativo(usuario, id_comunidade)
+            case "6":
+                return
+
+
+def executa_menu_api() -> None:
+    """
+    Mostra o submenu "Consultar API pública" até o usuário voltar. Não
+    precisa de usuário identificado, pois consulta dados de toda a plataforma.
+    Entrada: não recebe parâmetros.
+    Saida: não retorna valor.
+    """
+    while True:
+        opcao = menu.menu_api()
+
+        match opcao:
+            case "1":
+                menu.ranking_api_interativo()
+            case "2":
+                menu.postagens_da_comunidade_api_interativo()
+            case "3":
                 return
 
 
@@ -82,21 +134,11 @@ def executa_opcao_do_usuario(conexao, sessao: dict, opcao: str) -> None:
 
     match opcao:
         case "1":
-            menu.registrar_pontos(
-                conexao,
-                usuario,
-                sessao["id_comunidade"],
-                dados.periodos,
-                dados.niveis_impacto,
-                dados.progresso,
-                dados.LIMITE_TOTAL,
-                dados.LIMITE_DIAS,
-                dados.LIMITE_ACOES,
-            )
+            registra_pontos_da_sessao(conexao, sessao)
         case "2":
-            executa_menu_crud(conexao, usuario["id"])
+            executa_menu_crud(conexao, sessao)
         case "3":
-            executa_menu_relatorios(conexao, usuario["id"])
+            executa_menu_relatorios(conexao, usuario, sessao["id_comunidade"])
 
 
 def executa_menu_principal(conexao) -> None:
@@ -108,18 +150,30 @@ def executa_menu_principal(conexao) -> None:
     sessao = {"usuario": None, "id_comunidade": None}
 
     while True:
-        nome_usuario = sessao["usuario"]["nome"] if sessao["usuario"] else None
+        nome_usuario = None
+
+        if sessao["usuario"] is not None:
+            nome_usuario = sessao["usuario"]["nome"]
+
         opcao = menu.menu_principal(nome_usuario)
 
         if opcao == "0":
             print("Encerrando o sistema...")
             return
 
+        # Trocar de usuário: zera a sessão, o progresso e as respostas guardadas
         if opcao == "4":
             sessao = {"usuario": None, "id_comunidade": None}
             dados.progresso["ativo"] = False
+            dados.respostas_usuario.clear()
             continue
 
+        # A consulta à API não precisa de usuário identificado
+        if opcao == "5":
+            executa_menu_api()
+            continue
+
+        # Opções 1, 2 e 3 só rodam com usuário identificado
         if garante_identificacao(conexao, sessao):
             executa_opcao_do_usuario(conexao, sessao, opcao)
 
@@ -130,7 +184,11 @@ def main() -> None:
     Entrada: não recebe parametros; utiliza os menus interativos.
     Saida: não retorna valor.
     """
-    os.system("cls" if os.name == "nt" else "clear")
+    # Limpa o terminal (cls no Windows, clear nos outros sistemas)
+    if os.name == "nt":
+        os.system("cls")
+    else:
+        os.system("clear")
 
     try:
         conexao = banco.conectar()
@@ -142,7 +200,11 @@ def main() -> None:
         executa_menu_principal(conexao)
     except banco.ErroBanco as erro:
         print(f"\nErro: {erro}")
+    except (KeyboardInterrupt, EOFError):
+        # Ctrl+C ou Ctrl+D encerram o sistema sem mostrar o erro do Python
+        print("\nSistema encerrado.")
     finally:
+        # Fecha a conexão com o banco mesmo se ocorrer erro
         conexao.close()
 
 

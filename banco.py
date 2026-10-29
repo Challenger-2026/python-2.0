@@ -22,9 +22,8 @@ class ErroBanco(Exception):
     """Erro de banco com mensagem amigável para mostrar ao usuário."""
 
 
-# ---------------------------------------------------------------------------
+
 # CONEXÃO
-# ---------------------------------------------------------------------------
 
 def carregar_env(caminho_env: str = "") -> None:
     """
@@ -50,6 +49,7 @@ def carregar_env(caminho_env: str = "") -> None:
             continue
 
         nome_variavel, valor_variavel = linha.split("=", 1)
+        # setdefault não sobrescreve uma variável já definida no ambiente
         os.environ.setdefault(nome_variavel.strip(), valor_variavel.strip())
 
 
@@ -69,6 +69,7 @@ def conectar() -> oracledb.Connection:
         raise ErroBanco("Defina DB_USER e DB_PASSWORD no arquivo .env.")
 
     try:
+        # Monta o endereço do Oracle (host, porta e SID); usa valores padrão se faltar
         endereco_banco = oracledb.makedsn(
             os.environ.get("DB_HOST", "oracle.fiap.com.br"),
             int(os.environ.get("DB_PORT", "1521")),
@@ -76,12 +77,12 @@ def conectar() -> oracledb.Connection:
         )
         return oracledb.connect(user=usuario_banco, password=senha_banco, dsn=endereco_banco)
     except (oracledb.Error, ValueError) as erro:
-        raise ErroBanco(f"Não foi possível conectar ao banco: {erro}") from erro
+        raise ErroBanco(f"Não foi possível conectar ao banco: {erro}")
 
 
-# ---------------------------------------------------------------------------
+
 # USUÁRIO E COMUNIDADE (consulta)
-# ---------------------------------------------------------------------------
+
 
 def buscar_usuario_por_cpf(conexao: oracledb.Connection, cpf: str) -> dict | None:
     """
@@ -89,18 +90,21 @@ def buscar_usuario_por_cpf(conexao: oracledb.Connection, cpf: str) -> dict | Non
     Entrada: conexao (conexão aberta); cpf (str) com 11 números.
     Saida: dict com id e nome, ou None se não existir.
     """
+    # REPLACE tira pontos e traço do CPF salvo, para comparar só os números
     sql = """
         SELECT id_usuario, nm_completo
         FROM T_LGT_USUARIO
         WHERE REPLACE(REPLACE(cpf, '.', ''), '-', '') = :cpf
     """
+    cursor = conexao.cursor()
 
     try:
-        with conexao.cursor() as cursor:
-            cursor.execute(sql, cpf=cpf)
-            linha_encontrada = cursor.fetchone()
+        cursor.execute(sql, cpf=cpf)
+        linha_encontrada = cursor.fetchone()
     except oracledb.Error as erro:
-        raise ErroBanco(f"Erro ao consultar o usuário: {erro}") from erro
+        raise ErroBanco(f"Erro ao consultar o usuário: {erro}")
+    finally:
+        cursor.close()
 
     if linha_encontrada is None:
         return None
@@ -115,6 +119,7 @@ def listar_comunidades_do_usuario(conexao: oracledb.Connection, id_usuario: int)
     Entrada: conexao (conexão aberta); id_usuario (int).
     Saida: lista de dicts com id e nome, podendo estar vazia.
     """
+    # O JOIN com a tabela de associação traz só as comunidades do usuário
     sql = """
         SELECT c.id_comunidade, c.nm_comunidade
         FROM T_LGT_COMUNIDADE c
@@ -123,20 +128,27 @@ def listar_comunidades_do_usuario(conexao: oracledb.Connection, id_usuario: int)
         WHERE uc.T_LGT_USUARIO_id_usuario = :id_usuario
         ORDER BY c.id_comunidade
     """
+    cursor = conexao.cursor()
 
     try:
-        with conexao.cursor() as cursor:
-            cursor.execute(sql, id_usuario=id_usuario)
-            linhas_encontradas = cursor.fetchall()
+        cursor.execute(sql, id_usuario=id_usuario)
+        linhas_encontradas = cursor.fetchall()
     except oracledb.Error as erro:
-        raise ErroBanco(f"Erro ao consultar as comunidades: {erro}") from erro
+        raise ErroBanco(f"Erro ao consultar as comunidades: {erro}")
+    finally:
+        cursor.close()
 
-    return [{"id": linha[0], "nome": linha[1]} for linha in linhas_encontradas]
+    comunidades = []
+
+    for linha in linhas_encontradas:
+        comunidades.append({"id": linha[0], "nome": linha[1]})
+
+    return comunidades
 
 
-# ---------------------------------------------------------------------------
-# CRUD DE POSTAGENS (registros de ações)
-# ---------------------------------------------------------------------------
+
+# CRUD DE POSTAGENS 
+
 
 COLUNAS_POSTAGEM = """
     id_postagem, ct_texto, ct_url, st_validacao, pt_gerado,
@@ -161,6 +173,20 @@ def montar_postagem(linha: tuple) -> dict:
     }
 
 
+def montar_lista_de_postagens(linhas: list) -> list[dict]:
+    """
+    Converte várias linhas do SELECT de postagens em uma lista de dicts.
+    Entrada: linhas (list) de tuplas na ordem de COLUNAS_POSTAGEM.
+    Saida: lista de dicts (ver montar_postagem), podendo estar vazia.
+    """
+    postagens = []
+
+    for linha in linhas:
+        postagens.append(montar_postagem(linha))
+
+    return postagens
+
+
 def inserir_postagem(
     conexao: oracledb.Connection,
     acao: str,
@@ -168,12 +194,12 @@ def inserir_postagem(
     pontos: float,
     id_usuario: int,
     id_comunidade: int,
-) -> int:
+) -> None:
     """
     CREATE: grava uma ação como postagem PENDENTE (a moderação decide depois).
     Entrada: conexao; acao (str); url (str); pontos (float); id_usuario (int);
              id_comunidade (int).
-    Saida: id (int) gerado pelo banco.
+    Saida: não retorna valor; o id da postagem é gerado pelo banco.
     Erro: ErroBanco se o banco recusar.
     """
     sql = """
@@ -181,12 +207,10 @@ def inserir_postagem(
             (ct_texto, ct_url, st_validacao, pt_gerado,
              T_LGT_USUARIO_id_usuario, T_LGT_COMUNIDADE_id_comunidade)
         VALUES (:acao, :url, :status, :pontos, :id_usuario, :id_comunidade)
-        RETURNING id_postagem INTO :id_novo
     """
     cursor = conexao.cursor()
 
     try:
-        id_novo = cursor.var(int)
         cursor.execute(
             sql,
             acao=acao,
@@ -195,14 +219,13 @@ def inserir_postagem(
             pontos=pontos,
             id_usuario=id_usuario,
             id_comunidade=id_comunidade,
-            id_novo=id_novo,
         )
     except oracledb.Error as erro:
         conexao.rollback()
-        raise ErroBanco(f"Não foi possível registrar a ação: {erro}") from erro
+        raise ErroBanco(f"Não foi possível registrar a ação: {erro}")
     else:
+        # Só confirma (commit) se o INSERT deu certo
         conexao.commit()
-        return int(id_novo.getvalue()[0])
     finally:
         cursor.close()
 
@@ -219,15 +242,17 @@ def listar_postagens(conexao: oracledb.Connection, id_usuario: int) -> list[dict
         WHERE T_LGT_USUARIO_id_usuario = :id_usuario
         ORDER BY id_postagem
     """
+    cursor = conexao.cursor()
 
     try:
-        with conexao.cursor() as cursor:
-            cursor.execute(sql, id_usuario=id_usuario)
-            linhas_encontradas = cursor.fetchall()
+        cursor.execute(sql, id_usuario=id_usuario)
+        linhas_encontradas = cursor.fetchall()
     except oracledb.Error as erro:
-        raise ErroBanco(f"Erro ao listar os registros: {erro}") from erro
+        raise ErroBanco(f"Erro ao listar os registros: {erro}")
+    finally:
+        cursor.close()
 
-    return [montar_postagem(linha) for linha in linhas_encontradas]
+    return montar_lista_de_postagens(linhas_encontradas)
 
 
 def buscar_postagens(conexao: oracledb.Connection, id_usuario: int, nome_da_acao: str) -> list[dict]:
@@ -237,6 +262,7 @@ def buscar_postagens(conexao: oracledb.Connection, id_usuario: int, nome_da_acao
     Entrada: conexao; id_usuario (int); nome_da_acao (str).
     Saida: lista de dicts, podendo estar vazia.
     """
+    # ct_texto é CLOB; DBMS_LOB.SUBSTR converte para texto para poder comparar
     sql = f"""
         SELECT {COLUNAS_POSTAGEM}
         FROM T_LGT_POSTAGEM
@@ -244,15 +270,17 @@ def buscar_postagens(conexao: oracledb.Connection, id_usuario: int, nome_da_acao
           AND UPPER(DBMS_LOB.SUBSTR(ct_texto, 4000, 1)) = UPPER(:nome_da_acao)
         ORDER BY id_postagem
     """
+    cursor = conexao.cursor()
 
     try:
-        with conexao.cursor() as cursor:
-            cursor.execute(sql, id_usuario=id_usuario, nome_da_acao=nome_da_acao)
-            linhas_encontradas = cursor.fetchall()
+        cursor.execute(sql, id_usuario=id_usuario, nome_da_acao=nome_da_acao)
+        linhas_encontradas = cursor.fetchall()
     except oracledb.Error as erro:
-        raise ErroBanco(f"Erro ao buscar os registros: {erro}") from erro
+        raise ErroBanco(f"Erro ao buscar os registros: {erro}")
+    finally:
+        cursor.close()
 
-    return [montar_postagem(linha) for linha in linhas_encontradas]
+    return montar_lista_de_postagens(linhas_encontradas)
 
 
 def atualizar_postagem(conexao: oracledb.Connection, id_postagem: int,
@@ -282,10 +310,11 @@ def atualizar_postagem(conexao: oracledb.Connection, id_postagem: int,
             id_usuario=id_usuario,
             status=STATUS_PENDENTE,
         )
+        # rowcount é 0 se o registro não existe, não é do usuário ou não está PENDENTE
         quantidade_alterada = cursor.rowcount
     except oracledb.Error as erro:
         conexao.rollback()
-        raise ErroBanco(f"Não foi possível atualizar o registro: {erro}") from erro
+        raise ErroBanco(f"Não foi possível atualizar o registro: {erro}")
     else:
         conexao.commit()
         return quantidade_alterada > 0
@@ -311,10 +340,11 @@ def excluir_postagem(conexao: oracledb.Connection, id_postagem: int, id_usuario:
 
     try:
         cursor.execute(sql, id_postagem=id_postagem, id_usuario=id_usuario, status=STATUS_PENDENTE)
+        # rowcount é 0 se o registro não existe, não é do usuário ou não está PENDENTE
         quantidade_excluida = cursor.rowcount
     except oracledb.Error as erro:
         conexao.rollback()
-        raise ErroBanco(f"Não foi possível excluir o registro: {erro}") from erro
+        raise ErroBanco(f"Não foi possível excluir o registro: {erro}")
     else:
         conexao.commit()
         return quantidade_excluida > 0

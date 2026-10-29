@@ -1,288 +1,337 @@
 ================================================================
-SISTEMA DE PONTOS AMBIENTAIS - LOBO-GUARÁ TECH
-Documentação de alterações e fluxo de funcionamento
+Documentação do projeto (Challenge 2026 - Sprint 4)
+Disciplina: Computational Thinking Using Python
 ================================================================
 
-Este documento explica o que foi alterado no sistema em relação à
-primeira versão e como o programa funciona hoje, do início ao fim.
-Serve como referência pra qualquer pessoa que for ler o código ou usar
-o sistema sem ter acompanhado o desenvolvimento.
-
+Programa de console em Python que registra ações ambientais de um
+usuário e as grava no banco Oracle da plataforma Lobo-guará Tech
+(a mesma base usada pela API Java do projeto).
 
 ----------------------------------------------------------------
-1. VISÃO GERAL
+0. IDENTIFICAÇÃO DO GRUPO
 ----------------------------------------------------------------
 
-Programa de console em Python que simula o registro de pontos por
-ações ambientais realizadas por uma pessoa ao longo de um período de
-1 a 30 dias. O sistema é dividido em 3 arquivos:
+Equipe....: LOBO-GUARÁ TECH
 
-- dados.py   -> guarda os dados do sistema e as regras de cálculo/
-                validação/CRUD. Não imprime nada na tela.
-- menu.py    -> cuida de tudo que aparece na tela e de tudo que é
-                digitado pelo usuário. Usa as funções de dados.py.
-- main.py    -> ponto de entrada; só organiza o fluxo entre os menus.
+Integrantes:
+  - Ana Carolina Orcelli Bautzer - RM 570281
+  - Eduardo Lima de Souza - RM 570412
+  - Lucas Costa Serrano - RM 571016
+  - Lucas Fortunato Brandão - RM 572860
+  - Nicolas Rodrigues Martins - RM 573178
 
+Vídeo de apresentação:
+  <PREENCHER: colar o link depois de publicar o vídeo>
+
+Repositório do código / API publicada:
+  REPOSITÓRIO: https://github.com/Challenger-2026/python-2.0.git
+  API........: https://guara-api.onrender.com
 
 ----------------------------------------------------------------
-2. PRINCIPAIS MUDANÇAS FEITAS
+1. VISÃO GERAL E ADERÊNCIA AO TEMA
 ----------------------------------------------------------------
 
-2.1. Fim do catálogo de ações separado
-   Antes existia uma lista fixa de "ações ambientais" (com ID, nome e
-   peso) cadastrada à parte, e a pessoa escolhia uma ação dessa lista
-   pelo ID na hora de registrar pontos. Isso foi removido. Hoje só
-   existe UMA estrutura: os registros do que a pessoa realmente fez
-   (dia, período, ação digitada, nível de impacto, peso, pontos).
-   "Cadastrar uma ação" e "Registrar pontos" viraram a mesma coisa.
+A plataforma Lobo-guará Tech premia pessoas que praticam ações
+ambientais. Cada ação enviada vira uma "postagem" com link de
+evidência, que fica PENDENTE até a moderação aprovar ou rejeitar, e
+gera pontos para o usuário.
 
-2.2. Ninguém digita ID/número decorado em lugar nenhum
-   Em nenhuma tela o sistema pede um "ID da ação" pra a pessoa
-   escolher. Ao registrar pontos, ela digita o nome da ação livremente.
-   Ao atualizar/excluir um registro, o sistema mostra a lista completa
-   numerada (1, 2, 3...) e a pessoa escolhe pela posição mostrada na
-   tela - esse número não é salvo em lugar nenhum, é só um jeito de
-   apontar "qual desses".
+O programa em Python é um segundo canal de acesso a esses mesmos
+dados: o que é registrado, alterado ou excluído por ele fica gravado no
+mesmo banco usado pela API Java, e o que foi cadastrado pela plataforma
+(usuários, comunidades e postagens) é lido pelo programa. Os dados são
+relevantes para o projeto porque são exatamente os do desafio: ações
+sustentáveis, pontuação e ranking.
 
-2.3. CRUD organizado em "Gerenciar ações"
-   Listar, Buscar, Atualizar e Excluir atuam sobre os registros feitos
-   em "Registrar pontos" (não existe mais opção "Cadastrar" separada).
-   - Buscar é por nome EXATO da ação, mas maiúsculas e minúsculas são
-     tratadas como iguais (buscar "plantar" acha "Plantar" ou
-     "PLANTAR"); não aceita termo vazio.
-   - Atualizar e Excluir mostram a lista inteira direto (sem pedir uma
-     busca antes), e só permitem mudar o nome da ação (nível, peso e
-     pontos não são editáveis - eles definem quanto aquele dia valeu).
-   - Excluir sempre mostra os dados do registro e pede confirmação
-     (s/n) antes de excluir de verdade.
-   - Um número inválido ao escolher qual atualizar/excluir só repete a
-     pergunta, sem reiniciar a operação inteira nem reimprimir a lista.
+O código é dividido em 6 arquivos:
 
-2.4. Ações por peso
-   O relatório "Ações por peso" ordena os registros REAIS (o que foi
-   de fato feito) do maior peso pro menor - não é mais um catálogo de
-   tipos de ação, é a atividade registrada mesmo.
+  - main.py     -> ponto de entrada; organiza o fluxo entre os menus.
+  - menu.py     -> tudo que aparece na tela e tudo que o usuário
+                   digita (menus, tabelas, perguntas).
+  - dados.py    -> estruturas de dados (períodos, níveis de impacto),
+                   validações, cálculo de pontos, filtros e
+                   ordenações. Não usa print() nem input().
+  - banco.py    -> acesso ao Oracle (conexão e CRUD). Não usa print()
+                   nem input().
+  - api.py      -> consumo da API pública (GET). Não usa print() nem
+                   input().
+  - exportar.py -> geração dos arquivos JSON. Não usa print() nem
+                   input().
 
-2.5. Continuar de onde parou / recomeçar / novo ciclo
-   Se a pessoa sai de "Registrar pontos" no meio (sem terminar os 30
-   dias nem atingir 100 pontos), da próxima vez que entrar ali o
-   sistema pergunta se quer continuar de onde parou ou recomeçar do
-   zero. Recomeçar NUNCA apaga os dias já registrados antes, só zera a
-   contagem de pontos do novo ciclo. Quando um ciclo termina de verdade
-   (atinge o limite de pontos ou completa os 30 dias), o sistema avisa
-   e pergunta se quer começar um novo registro na hora, sem precisar
-   voltar pro menu principal.
+Bibliotecas: oracledb (banco) e requests (API) - ver requirements.txt;
+json, os, datetime e textwrap fazem parte da biblioteca padrão.
 
-2.6. Identificação única, tipo login
-   Nome e CPF são pedidos uma única vez, logo na abertura do programa -
-   não são mais pedidos toda vez que a pessoa escolhe "Registrar
-   pontos". O sistema todo usa essa identidade durante a execução.
+----------------------------------------------------------------
+2. COMO EXECUTAR
+----------------------------------------------------------------
 
-2.7. CPF como dado sensível
-   O CPF nunca é exibido em nenhuma tela do sistema (nem no resumo
-   final, nem nas tabelas de listar/buscar/atualizar/excluir, nem nos
-   relatórios) - ele só é validado e guardado internamente em cada
-   registro.
+1) Instalar as dependências:
+       pip install -r requirements.txt
 
-2.8. Visual: tabelas com borda e pausa pra leitura
-   Períodos, níveis de impacto e registros são mostrados em tabelas com
-   bordas alinhadas (estilo "+----+----+"). Toda tela que mostra uma
-   informação importante (resultado do dia, resumo final, listagens,
-   relatórios) termina com "Pressione ENTER para continuar...", pra dar
-   tempo de ler antes de a tela seguinte aparecer.
+2) Criar um arquivo .env (copiar o .env.example) com as credenciais
+   do Oracle:
+       DB_HOST=oracle.fiap.com.br
+       DB_PORT=1521
+       DB_SID=ORCL
+       DB_USER=<usuário>
+       DB_PASSWORD=<senha>
+   O arquivo .env guarda a senha do banco e não é versionado (está
+   no .gitignore).
 
-2.9. Espaçamento entre perguntas
-   Todas as perguntas novas (não os reenvios após erro) ganharam uma
-   linha em branco antes, pra não ficarem coladas com a tela anterior -
-   inclui os três menus, "Buscar ação", "Ir para o próximo período" etc.
+3) Rodar:
+       python main.py
 
-2.10. Outros ajustes pontuais
-   - Nome do sistema: "SISTEMA DE PONTOS AMBIENTAIS LOBO-GUARÁ TECH".
-   - Menu principal usa "0" pra Sair (em vez de ser a última opção).
-   - Removido o campo "unidade" das ações (não tinha efeito funcional).
-   - Mensagem de sucesso do registro não mostra mais números de ID.
-
-2.11. Quebra de texto longo nas tabelas (igual ao "Wrap Text" do Excel)
-   As colunas "Ação" e "Nome" da tabela de registros (mostra_registros_
-   numerados) recebem texto digitado livremente (nome da ação, nome
-   completo do usuário), sem limite de tamanho. Antes, um texto maior
-   que a coluna quebrava o alinhamento da borda. Agora, o texto que não
-   cabe é quebrado em mais linhas dentro da mesma borda, sempre por
-   palavra inteira (nunca no meio de uma palavra) - a "altura" daquela
-   linha da tabela vira o maior número de linhas entre Ação e Nome
-   daquele registro; as demais colunas (Nº, Dia, Per, Nível, Peso,
-   Pontos) só aparecem na primeira linha, as linhas extras ficam em
-   branco nelas. Isso usa textwrap.wrap(), da biblioteca padrão do
-   Python (módulo "textwrap", nenhuma instalação extra necessária) -
-   só faz a quebra em si; o alinhamento em colunas continua sendo feito
-   manualmente com f-strings, igual ao resto do sistema. A numeração da
-   posição (usada em Atualizar/Excluir) não é afetada - continua
-   contando por registro, não por linha impressa.
+Tabelas usadas, as mesmas da API Java: T_LGT_USUARIO,
+T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
 
 
 ----------------------------------------------------------------
 3. FLUXO DE FUNCIONAMENTO
 ----------------------------------------------------------------
 
-3.1. Abertura do sistema
-   Ao iniciar (python main.py), a tela é limpa e o sistema pede, uma
-   única vez:
-     - Nome do usuário
-     - CPF (11 números válidos)
-   Essa identidade vale pro resto da execução.
+3.1. Abertura
+   O programa abre a conexão com o Oracle e mostra o menu principal.
+   Se o banco não responder ou se faltar o .env, mostra a mensagem de
+   erro e encerra. A conexão é fechada no final, no bloco finally.
 
-3.2. Menu principal
+3.2. Identificação
+   O usuário só é identificado na primeira vez que escolhe uma opção
+   que precisa dele (1, 2 ou 3). O sistema pede o CPF (11 números),
+   procura no banco e, se achar, dá boas-vindas. Se o usuário
+   participa de comunidades, escolhe em qual vai registrar. Se o CPF
+   não existe, avisa para se cadastrar pelo site. Digitar 0 volta.
+   O CPF nunca é exibido nas telas.
+
+3.3. Menu principal
      0. Sair
      1. Registrar pontos
-     2. Gerenciar ações
-     3. Relatórios
+     2. Gerenciar ações (submenu do CRUD)
+     3. Relatórios (submenu)
+     4. Trocar de usuário
+     5. Consultar API pública (submenu)
 
-3.3. Opção 1 - Registrar pontos
-   a) Mostra a tabela de períodos (1 a 7 dias / 8 a 15 dias / 16 a 30
-      dias, com os pontos por dia de cada um).
-   b) Se já existe um progresso salvo de uma vez anterior (a pessoa
-      parou no meio), pergunta: continuar de onde parou (c) ou
-      recomeçar do zero (r)?
-   c) Se for começar do zero, pergunta o período inicial (1, 2 ou 3).
-   d) Pra cada dia dentro do período:
-        - Pergunta se a pessoa fez alguma ação ambiental naquele dia.
-        - Se não fez: registra o dia com 0 pontos (nem os pontos base
-          do dia são dados).
-        - Se fez: mostra a tabela de níveis de impacto (Alto/Médio/
-          Baixo, cada um com um peso fixo) e exemplos de ações por
-          nível; pede o nível primeiro, depois o nome da ação
-          realizada (texto livre); calcula os pontos do dia respeitando
-          os limites do sistema (limite total, limite por dias, limite
-          por ações).
-        - Mostra o resultado daquele dia (ação, nível, peso, pontos,
-          acumulado).
-        - Pergunta se quer registrar o próximo dia; ao completar os
-          dias de um período, pergunta se quer avançar pro próximo.
-   e) Quando o ciclo termina (atinge o limite de 100 pontos ou completa
-      os 30 dias) ou a pessoa decide parar, mostra um resumo final
-      (usuário, períodos usados, dias registrados, pontos por
-      categoria, total).
-   f) Se o ciclo terminou de verdade, pergunta se quer iniciar um novo
-      registro do zero na hora; se não, ou se a pessoa só decidiu
-      parar no meio, o progresso fica salvo pra continuar depois.
+3.4. Opção 1 - Registrar pontos (INSERT)
+   a) Mostra os períodos (1 a 7 dias, 8 a 15 dias, 16 a 30 dias) e
+      pede o período inicial. Se havia progresso salvo, pergunta se
+      continua de onde parou ou recomeça.
+   b) Para cada dia, pergunta se houve ação ambiental:
+        - Não: o dia vale 0 pontos e não é gravado no banco.
+        - Sim: pede o nível de impacto (Alto 1,06 / Médio 0,66 /
+          Baixo 0,16), o nome da ação e o link da evidência (precisa
+          começar com http:// ou https://). Calcula os pontos do dia
+          respeitando os limites (100 no total, 68 pelos dias e
+          31,80 pelas ações) e grava a ação no banco como postagem
+          PENDENTE.
+   c) Se o banco recusar o registro, o cálculo do dia é desfeito.
+   d) O ciclo termina ao chegar em 100 pontos ou no dia 30; mostra o
+      resumo final. Se o usuário parar antes, o progresso fica salvo
+      para continuar depois.
 
-3.4. Opção 2 - Gerenciar ações (CRUD sobre os registros)
-     1. Listar   - mostra todos os registros numerados, em tabela.
-     2. Buscar   - pede o nome exato da ação e mostra os que baterem.
-     3. Atualizar- mostra a lista completa numerada, pede qual
-                   atualizar, mostra os dados dele e pede o novo nome
-                   (nível/peso/pontos continuam os mesmos).
-     4. Excluir  - mesma lista, escolhe qual, mostra os dados e pede
-                   confirmação (s/n) antes de excluir de verdade.
-     5. Voltar
+3.5. Opção 2 - Gerenciar ações (CRUD no banco)
+     1. Inserir   - registra uma ação, no mesmo fluxo da opção 1
+                    (CREATE).
+     2. Listar    - mostra as postagens do usuário em uma tabela
+                    (READ).
+     3. Buscar    - pede o nome exato da ação, sem diferenciar
+                    maiúsculas de minúsculas, e mostra as encontradas
+                    (READ).
+     4. Atualizar - mostra a lista numerada, o usuário escolhe pela
+                    posição e troca o nome da ação (UPDATE).
+     5. Excluir   - mostra a lista numerada, o usuário escolhe pela
+                    posição, vê os dados e confirma com s ou n
+                    (DELETE).
+     6. Voltar
+   Regra de negócio: só postagens PENDENTES podem ser atualizadas ou
+   excluídas; depois da moderação os pontos já foram decididos. Os
+   pontos e o link não são editáveis; para mudar, exclui-se e
+   registra-se de novo.
 
-3.5. Opção 3 - Relatórios
-     1. Ver registros       - lista tudo (mesma tabela do CRUD).
-     2. Filtrar por período - pede o período e mostra só os registros
-                               daquele período.
-     3. Ações por peso      - mostra os registros ordenados do maior
-                               peso de ação pro menor.
-     4. Voltar
+3.6. Opção 3 - Relatórios
+     1. Ver registros - lista as postagens do usuário.
+     2. Filtrar por status - mostra só as PENDENTE, APROVADO ou
+        REJEITADO.
+     3. Ações por pontos - ordena do maior para o menor.
+     4. Exportar ações do banco (JSON) - gera o arquivo
+        crud_usuario_<id>.json com as postagens do usuário.
+     5. Exportar minhas respostas (JSON) - gera o arquivo
+        respostas_usuario_<id>.json com o que foi respondido em
+        "Registrar pontos" nesta sessão.
+     6. Voltar
+   Os arquivos JSON são gravados na pasta "exportacoes" (criada
+   automaticamente), com acentos preservados e indentação. A data da
+   exportação aparece no formato dia/mês/ano hora:minuto:segundo.
 
-3.6. Opção 0 - Sair
-   Encerra o programa.
+3.7. Opção 5 - Consultar API pública (consumo de API)
+     1. Ranking de usuários - faz GET /usuarios e ordena por pontos,
+        do maior para o menor.
+     2. Postagens de uma comunidade - faz GET /comunidades e GET
+        /postagens; o usuário escolhe a comunidade e vê as postagens
+        dela.
+     3. Voltar
+   Não exige identificação. O Render gratuito pode levar mais de 1
+   minuto para "acordar" na primeira chamada; por isso o tempo limite
+   da requisição é de 120 segundos.
+
+3.8. Opção 4 e 0
+   4 troca de usuário (limpa a sessão e o progresso); 0 encerra.
 
 
 ----------------------------------------------------------------
-4. REGRAS IMPORTANTES QUE VALEM PARA O SISTEMA TODO
+4. REQUISITOS DA SPRINT E ONDE ESTÃO NO CÓDIGO
 ----------------------------------------------------------------
 
-- O peso de uma ação nunca é editável depois de registrada - ele vem
-  do nível de impacto escolhido na hora (Alto = 1,06 / Médio = 0,66 /
-  Baixo = 0,16); pra mudar, é preciso excluir o registro e fazer um
-  novo em "Registrar pontos".
-- Erros de validação (nome vazio, CPF inválido, resposta fora de s/n,
-  número fora da lista etc.) sempre pedem a informação de novo, nunca
-  cancelam a operação silenciosamente.
-- Nenhum dado histórico é apagado automaticamente - só a exclusão
-  manual e explícita (com confirmação) remove um registro.
+- Menus e submenus de acesso ao CRUD:
+    main.py (executa_menu_principal, executa_menu_crud,
+    executa_menu_relatorios, executa_menu_api) e menu.py (menu_*).
+
+- Um exemplo de cada operação do CRUD, integrado ao banco:
+    banco.py: inserir_postagem (CREATE), listar_postagens e
+    buscar_postagens (READ), atualizar_postagem (UPDATE),
+    excluir_postagem (DELETE).
+
+- Exportação dos dados para JSON:
+    exportar.py (monta_exportacao_crud, monta_exportacao_respostas,
+    salvar_json) e menu.py (exportar_*_interativo).
+
+- Consumo de API pública:
+    api.py (buscar_json, listar_usuarios_api, listar_comunidades_api,
+    listar_postagens_api), usando requests.
+
+- Funções para organizar, filtrar e ordenar dados em listas de
+  dicionários e tuplas:
+    dados.py (filtrar_por_status, registros_por_pontos,
+    ranking_de_usuarios, filtrar_por_comunidade).
+
+- Tratamento de erros (try / except / else / finally):
+    banco.py (rollback no except, commit no else, cursor.close() no
+    finally), api.py (Timeout, ConnectionError, HTTPError, JSON
+    inválido e outras falhas do requests), exportar.py
+    (OSError/TypeError), main.py (Ctrl+C e Ctrl+D encerram o sistema
+    com uma mensagem) e menu.py
+    (atualizar_registro_interativo e excluir_registro_interativo).
+    Os erros são convertidos nas exceções próprias ErroBanco, ErroApi
+    e ErroExportacao, com mensagens amigáveis; o programa não fecha
+    por causa delas.
+
+- Validação de dados (entrada e processamento):
+    dados.py (cpf_formato_valido, url_valida, nome_valido,
+    inteiro_valido, periodo_valido, nivel_impacto_valido) e os
+    "pede_*" de menu.py, que repetem a pergunta até receber um valor
+    válido. As consultas ao banco usam parâmetros nomeados (:cpf,
+    :id_usuario...), nunca texto concatenado, evitando SQL injection.
 
 
 ----------------------------------------------------------------
-5. RESUMO DOS ARQUIVOS E DAS FUNÇÕES
+5. RESUMO DAS FUNÇÕES
 ----------------------------------------------------------------
 
-5.1. dados.py (dados + regras de negócio - sem print/input)
+5.1. dados.py (dados e regras de negócio - sem print/input)
 
-   Dados do sistema: periodos, niveis_impacto, registros, progresso e
-   os LIMITE_* - já descritos na seção 3.1 acima.
+   Dados: periodos, niveis_impacto, respostas_usuario, progresso,
+   LIMITE_TOTAL, LIMITE_DIAS e LIMITE_ACOES.
 
-   - nome_valido............: nome/ação/termo não pode ser vazio.
-   - nome_completo_valido...: exige nome e sobrenome (não só um nome).
-   - cpf_valido.............: confere formato e dígitos verificadores
-                               do CPF.
-   - inteiro_valido.........: diz se um texto pode virar número
-                               inteiro.
-   - periodo_valido.........: diz se o período informado é 1, 2 ou 3.
-   - nivel_impacto_valido...: diz se o nível de impacto informado
-                               existe.
-   - base_diaria............: pontos básicos do dia, conforme a faixa
-                               (1, 2 ou 3 pontos).
-   - peso_do_nivel..........: peso (Alto/Médio/Baixo) de um nível de
-                               impacto.
-   - nome_do_nivel..........: nome (Alto/Médio/Baixo) de um nível de
-                               impacto.
-   - calcula_pontos_dia.....: calcula os pontos do dia já respeitando
-                               os limites do sistema.
-   - buscar_registros.......: encontra os registros com o nome de ação
-                               exato informado.
-   - atualizar_registro.....: troca o nome da ação de um registro.
-   - excluir_registro.......: remove um registro da lista.
-   - filtrar_por_periodo....: seleciona os registros de um período.
-   - pega_peso_registro.....: pega o peso de um registro (auxiliar de
-                               ordenação).
-   - registros_por_peso.....: ordena os registros do maior peso pro
-                               menor.
+   - nome_valido............: texto não pode ser vazio.
+   - cpf_formato_valido.....: 11 números, não todos iguais.
+   - inteiro_valido.........: diz se um texto vira inteiro.
+   - periodo_valido.........: período é 1, 2 ou 3.
+   - nivel_impacto_valido...: o nível de impacto existe.
+   - url_valida.............: link começa com http(s):// e não tem
+                              espaços.
+   - base_diaria............: pontos básicos do dia (1, 2 ou 3).
+   - peso_do_nivel..........: peso de um nível de impacto.
+   - nome_do_nivel..........: nome de um nível de impacto.
+   - calcula_pontos_dia.....: pontos do dia respeitando os limites.
+   - filtrar_por_status.....: registros com um status.
+   - registros_por_pontos...: ordena do maior para o menor ponto.
+   - ranking_de_usuarios....: ordena usuários por saldo de pontos.
+   - filtrar_por_comunidade.: postagens de uma comunidade.
 
-5.2. menu.py (interface - telas, input(), try/except/else/finally)
+5.2. banco.py (Oracle - sem print/input)
 
-   - pausar.......................: espera ENTER antes de seguir.
-   - identificar_usuario..........: pede nome completo e CPF, uma
-                                     única vez, na entrada do sistema.
-   - mostra_periodos...............: tabela com borda dos períodos.
-   - mostra_niveis_impacto.........: tabela com borda dos níveis de
-                                      impacto.
-   - mostra_exemplos_acoes.........: níveis de impacto + exemplos
-                                      ilustrativos de ações por nível.
-   - mostra_registro...............: dados de um único registro
-                                      (usada antes de atualizar/
-                                      excluir); não mostra o CPF.
-   - mostra_registros_numerados....: tabela com vários registros
-                                      numerados; usada em Listar,
-                                      Buscar, Atualizar, Excluir e nos
-                                      3 relatórios; não mostra o CPF;
-                                      usa textwrap (biblioteca padrão)
-                                      pra quebrar Ação/Nome longos em
-                                      mais linhas sem quebrar a borda
-                                      (ver 2.11).
-   - registrar_pontos..............: conduz o registro de pontos dia a
-                                      dia e mostra o resumo final -
-                                      função principal do sistema.
-   - listar_registros_interativo...: lista todos os registros.
-   - buscar_registro_interativo....: busca registros pelo nome da
-                                      ação.
-   - atualizar_registro_interativo.: escolhe um registro pela posição
-                                      e atualiza o nome dele.
-   - excluir_registro_interativo...: escolhe um registro pela posição
-                                      e exclui, com confirmação.
-   - menu_principal.................: menu 0-Sair/1-Registrar/
-                                       2-Gerenciar/3-Relatórios.
-   - menu_crud......................: submenu de Gerenciar ações
-                                       (Listar/Buscar/Atualizar/
-                                       Excluir/Voltar).
-   - menu_relatorios................: submenu de Relatórios (Ver
-                                       registros/Filtrar por período/
-                                       Ações por peso/Voltar).
+   - carregar_env...........: lê o .env para as variáveis de ambiente.
+   - conectar...............: abre a conexão (ErroBanco se falhar).
+   - buscar_usuario_por_cpf.: procura o usuário pelo CPF.
+   - listar_comunidades_do_usuario: comunidades em que ele é membro.
+   - inserir_postagem.......: CREATE (postagem PENDENTE).
+   - listar_postagens.......: READ de todas as postagens do usuário.
+   - buscar_postagens.......: READ por nome exato da ação.
+   - atualizar_postagem.....: UPDATE do nome (só PENDENTE).
+   - excluir_postagem.......: DELETE (só PENDENTE).
+   - montar_postagem........: converte uma linha do SELECT em dict.
+   - montar_lista_de_postagens: converte várias linhas em uma lista de
+                                dicts, usando montar_postagem.
 
-5.3. main.py (orquestração)
+5.3. api.py (consumo da API - sem print/input)
 
-   - main...........................: limpa a tela, identifica o
-                                       usuário uma vez e conduz o loop
-                                       dos menus, chamando as funções
-                                       de menu.py com os dados de
-                                       dados.py.
+   - buscar_json............: GET genérico com tratamento de erros.
+   - listar_usuarios_api....: GET /usuarios.
+   - listar_comunidades_api.: GET /comunidades.
+   - listar_postagens_api...: GET /postagens.
+   A API devolve JSON em camelCase (nmCompleto, ctTexto, ptGerado...);
+   as funções convertem para os mesmos dicts usados no resto do
+   sistema (nome, acao, pontos...).
+
+5.4. exportar.py (JSON - sem print/input)
+
+   - monta_exportacao_crud......: dict com usuário, data, total de
+                                  registros, total de pontos e a lista.
+   - monta_exportacao_respostas.: dict com usuário, comunidade, resumo
+                                  e respostas dia a dia.
+   - salvar_json................: grava o arquivo em "exportacoes".
+
+5.5. menu.py (interface - telas, input() e mensagens)
+
+   - pausar, pergunta_sim_nao, pede_numero_da_lista: perguntas
+     reutilizáveis.
+   - identificar_usuario, pede_cpf_valido, pede_usuario_cadastrado,
+     escolhe_comunidade: identificação por CPF.
+   - mostra_*: tabelas com borda (períodos, níveis, registros). A
+     tabela de registros usa textwrap para quebrar ações longas sem
+     desalinhar a borda.
+   - registrar_pontos e suas auxiliares (inicia_novo_ciclo,
+     retoma_ciclo, registra_dia, decide_proximo_passo...): fluxo de
+     registro dia a dia.
+   - *_registro_interativo: listar, buscar, atualizar e excluir.
+   - relatorio_*_interativo e exportar_*_interativo: relatórios e JSON.
+   - ranking_api_interativo e postagens_da_comunidade_api_interativo:
+     telas da API.
+   - menu_principal, menu_crud, menu_relatorios, menu_api: menus.
+
+5.6. main.py (orquestração)
+
+   - main...................: abre a conexão, roda o sistema e fecha a
+                              conexão no finally.
+   - executa_menu_principal.: loop do menu principal e da sessão.
+   - executa_menu_crud / executa_menu_relatorios / executa_menu_api:
+     loops dos submenus.
+   - garante_identificacao..: identifica o usuário quando necessário.
+
+
+----------------------------------------------------------------
+6. USO DE INTELIGÊNCIA ARTIFICIAL
+----------------------------------------------------------------
+
+O grupo utilizou o Claude Code como apoio durante o desenvolvimento
+deste trabalho. A ferramenta foi usada principalmente na escrita dos
+comentários e docstrings do código, na redação de textos e da
+documentação, na correção de trechos do código e para tirar dúvidas de
+sintaxe do Python.
+
+Principais prompts escritos pelo grupo:
+
+  - "Com base nas informações que temos presentes no código, me ajude
+    na criação de uma nova documentação como um arquivo txt."
+  - "Faça uma varredura no código atrás de erros de digitação ou de
+    sintaxe pelo projeto."
+
+Correções e adaptações feitas pelo grupo sobre o que a ferramenta
+sugeriu:
+
+  - correções e mudanças nos textos do DOCUMENTACAO.txt e do
+    requirements.txt;
+  - geração do .env e do .gitignore.
+
+Aprendizado obtido: a ferramenta ajudou o grupo a identificar e
+corrigir alguns erros de lógica e de sintaxe enfrentados durante o
+desenvolvimento, e a produzir uma documentação mais detalhada e
+assertiva.
