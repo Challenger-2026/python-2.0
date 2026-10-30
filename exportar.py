@@ -15,10 +15,6 @@ from datetime import datetime
 PASTA_EXPORTACAO: str = "exportacoes"
 
 
-class ErroExportacao(Exception):
-    """Erro ao gravar o arquivo, com mensagem amigável para o usuário."""
-
-
 def monta_exportacao_crud(usuario: dict, registros: list[dict]) -> dict:
     """
     Monta o conteúdo do JSON com as ações do usuário que estão no banco.
@@ -79,7 +75,7 @@ def salvar_json(nome: str, conteudo: dict) -> str:
     Entrada: nome (str), por exemplo "crud_usuario_1.json";
              conteudo (dict) com tipos que o JSON aceita.
     Saida: caminho completo (str) do arquivo gravado.
-    Erro: ErroExportacao se não for possível gravar.
+    Erro: RuntimeError se não for possível gravar.
     """
     # Grava sempre na pasta "exportacoes", ao lado deste arquivo
     pasta = os.path.dirname(os.path.abspath(__file__))
@@ -94,6 +90,6 @@ def salvar_json(nome: str, conteudo: dict) -> str:
             # ensure_ascii=False mantém os acentos; indent deixa o arquivo legível
             json.dump(conteudo, arquivo, ensure_ascii=False, indent=4)
     except (OSError, TypeError) as erro:
-        raise ErroExportacao(f"Não foi possível gravar o arquivo {nome}: {erro}")
+        raise RuntimeError(f"Não foi possível gravar o arquivo {nome}: {erro}")
 
     return caminho

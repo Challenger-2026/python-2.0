@@ -19,12 +19,6 @@ STATUS_PENDENTE: str = "PENDENTE"
 PERFIL_COMUM: str = "COMUM"   # todo cadastro feito pelo Python entra como usuário comum
 MEMBRO: int = 1   # valor da coluna MEMBROS: na base inteira ela vale 1 em todas as linhas
 
-
-class ErroBanco(Exception):
-    """Erro de banco com mensagem amigável para mostrar ao usuário."""
-
-
-
 # CONEXÃO
 
 def carregar_env(caminho: str = "") -> None:
@@ -60,7 +54,7 @@ def conectar() -> oracledb.Connection:
     Abre a conexão com o Oracle usando as variáveis DB_*.
     Entrada: não recebe parâmetros.
     Saida: conexão aberta; quem chama deve fechar.
-    Erro: ErroBanco se faltar variável ou o banco não responder.
+    Erro: RuntimeError se faltar variável ou o banco não responder.
     """
     carregar_env()
 
@@ -68,7 +62,7 @@ def conectar() -> oracledb.Connection:
     senha = os.environ.get("DB_PASSWORD", "")
 
     if not usuario or not senha:
-        raise ErroBanco("Defina DB_USER e DB_PASSWORD no arquivo .env.")
+        raise RuntimeError("Defina DB_USER e DB_PASSWORD no arquivo .env.")
 
     try:
         # Monta o endereço do Oracle (host, porta e SID); usa valores padrão se faltar
@@ -79,7 +73,7 @@ def conectar() -> oracledb.Connection:
         )
         return oracledb.connect(user=usuario, password=senha, dsn=endereco)
     except (oracledb.Error, ValueError) as erro:
-        raise ErroBanco(f"Não foi possível conectar ao banco: {erro}")
+        raise RuntimeError(f"Não foi possível conectar ao banco: {erro}")
 
 
 # EXECUÇÃO DE SQL (usadas por todas as funções abaixo)
@@ -91,7 +85,7 @@ def consultar(conexao: oracledb.Connection, sql: str, mensagem: str, **parametro
              (:nome); mensagem (str) que começa o texto do erro; parametros
              com os valores de cada :nome.
     Saida: lista de tuplas, podendo estar vazia.
-    Erro: ErroBanco se o banco recusar.
+    Erro: RuntimeError se o banco recusar.
     """
     cursor = conexao.cursor()
 
@@ -99,7 +93,7 @@ def consultar(conexao: oracledb.Connection, sql: str, mensagem: str, **parametro
         cursor.execute(sql, **parametros)
         linhas = cursor.fetchall()
     except oracledb.Error as erro:
-        raise ErroBanco(f"{mensagem}: {erro}")
+        raise RuntimeError(f"{mensagem}: {erro}")
     finally:
         cursor.close()
 
@@ -113,7 +107,7 @@ def alterar(conexao: oracledb.Connection, sql: str, mensagem: str, **parametros)
     Entrada: mesmos parâmetros de consultar.
     Saida: quantidade de linhas alteradas (int); 0 se nenhuma bateu com o
            WHERE.
-    Erro: ErroBanco se o banco recusar.
+    Erro: RuntimeError se o banco recusar.
     """
     cursor = conexao.cursor()
 
@@ -122,7 +116,7 @@ def alterar(conexao: oracledb.Connection, sql: str, mensagem: str, **parametros)
         quantidade = cursor.rowcount
     except oracledb.Error as erro:
         conexao.rollback()
-        raise ErroBanco(f"{mensagem}: {erro}")
+        raise RuntimeError(f"{mensagem}: {erro}")
     else:
         # Só confirma (commit) se o comando deu certo
         conexao.commit()
@@ -194,7 +188,7 @@ def inserir_usuario(
     Entrada: conexao; nome, cpf (formatado, 14 caracteres), email, username
              e senha (str); nascimento (datetime).
     Saida: não retorna valor.
-    Erro: ErroBanco se o banco recusar (por exemplo, CPF repetido).
+    Erro: RuntimeError se o banco recusar (por exemplo, CPF repetido).
     """
     sql = """
         INSERT INTO T_LGT_USUARIO
@@ -247,7 +241,7 @@ def atualizar_usuario(conexao: oracledb.Connection, id_usuario: int, nome: str, 
     nível e pontos não são alterados por aqui.
     Entrada: conexao; id_usuario (int); nome e username (str).
     Saida: True se atualizou; False se o usuário não existe.
-    Erro: ErroBanco se o banco recusar (por exemplo, username repetido).
+    Erro: RuntimeError se o banco recusar (por exemplo, username repetido).
     """
     sql = """
         UPDATE T_LGT_USUARIO
@@ -268,7 +262,7 @@ def atualizar_senha(conexao: oracledb.Connection, id_usuario: int, senha_atual: 
     Entrada: conexao; id_usuario (int); senha_atual e senha_nova (str), já
              preparadas com dados.preparar_senha.
     Saida: True se trocou; False se a senha atual não confere.
-    Erro: ErroBanco se o banco recusar.
+    Erro: RuntimeError se o banco recusar.
     """
     sql = """
         UPDATE T_LGT_USUARIO
@@ -290,7 +284,7 @@ def excluir_usuario(conexao: oracledb.Connection, id_usuario: int, senha: str) -
     Entrada: conexao; id_usuario (int); senha (str) já preparada com
              dados.preparar_senha.
     Saida: True se excluiu; False se a senha não confere.
-    Erro: ErroBanco se o banco recusar.
+    Erro: RuntimeError se o banco recusar.
     """
     sql = "DELETE FROM T_LGT_USUARIO WHERE id_usuario = :id_usuario AND senha = :senha"
     quantidade = alterar(
@@ -325,7 +319,7 @@ def entrar_na_comunidade(conexao: oracledb.Connection, id_usuario: int, id_comun
     CREATE: coloca o usuário como membro de uma comunidade.
     Entrada: conexao; id_usuario (int); id_comunidade (int).
     Saida: não retorna valor.
-    Erro: ErroBanco se o banco recusar (por exemplo, já é membro).
+    Erro: RuntimeError se o banco recusar (por exemplo, já é membro).
     """
     sql = """
         INSERT INTO T_LGT_USUARIO_COMUNIDADE
@@ -343,7 +337,7 @@ def sair_da_comunidade(conexao: oracledb.Connection, id_usuario: int, id_comunid
     DELETE: tira o usuário da comunidade (as postagens dele continuam).
     Entrada: conexao; id_usuario (int); id_comunidade (int).
     Saida: True se saiu; False se ele não era membro.
-    Erro: ErroBanco se o banco recusar.
+    Erro: RuntimeError se o banco recusar.
     """
     sql = """
         DELETE FROM T_LGT_USUARIO_COMUNIDADE
@@ -435,7 +429,7 @@ def inserir_postagem(
     Entrada: conexao; acao (str); url (str); pontos (float); id_usuario (int);
              id_comunidade (int).
     Saida: não retorna valor; o id da postagem é gerado pelo banco.
-    Erro: ErroBanco se o banco recusar.
+    Erro: RuntimeError se o banco recusar.
     """
     sql = """
         INSERT INTO T_LGT_POSTAGEM
@@ -495,7 +489,7 @@ def atualizar_postagem(conexao: oracledb.Connection, id_postagem: int,
     Entrada: conexao; id_postagem (int); id_usuario (int); nome (str).
     Saida: True se atualizou; False se não existe, não é do usuário ou já
            foi moderada.
-    Erro: ErroBanco se o banco recusar.
+    Erro: RuntimeError se o banco recusar.
     """
     sql = """
         UPDATE T_LGT_POSTAGEM
@@ -519,7 +513,7 @@ def excluir_postagem(conexao: oracledb.Connection, id_postagem: int, id_usuario:
     Entrada: conexao; id_postagem (int); id_usuario (int).
     Saida: True se excluiu; False se não existe, não é do usuário ou já
            foi moderada.
-    Erro: ErroBanco se o banco recusar.
+    Erro: RuntimeError se o banco recusar.
     """
     sql = """
         DELETE FROM T_LGT_POSTAGEM

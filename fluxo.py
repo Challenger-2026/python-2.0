@@ -12,8 +12,6 @@ com as chaves "usuario" e "id_comunidade".
 """
 
 import os
-
-import banco
 import dados
 import menu
 

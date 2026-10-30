@@ -7,6 +7,7 @@ Programa de console em Python que registra ações ambientais de um
 usuário e as grava no banco Oracle da plataforma Lobo-guará Tech
 (a mesma base usada pela API Java do projeto).
 
+# Criar um README.MD
 ----------------------------------------------------------------
 0. IDENTIFICAÇÃO DO GRUPO
 ----------------------------------------------------------------
@@ -299,8 +300,7 @@ registrar pontos.
     e Ctrl+D encerram o sistema com uma mensagem; conexão fechada no
     finally) e menu.py
     (atualizar_registro_interativo e excluir_registro_interativo).
-    Os erros são convertidos nas exceções próprias ErroBanco, ErroApi
-    e ErroExportacao, com mensagens amigáveis; o programa não fecha
+    Os erros são convertidos nas exceções próprias RuntimeError com mensagens amigáveis; o programa não fecha
     por causa delas.
 
 - Validação de dados (entrada e processamento):
@@ -354,7 +354,7 @@ registrar pontos.
 5.2. banco.py (Oracle - sem print/input)
 
    - carregar_env...........: lê o .env para as variáveis de ambiente.
-   - conectar...............: abre a conexão (ErroBanco se falhar).
+   - conectar...............: abre a conexão (RuntimeError se falhar).
    - consultar..............: executa um SELECT com tratamento de erro
                               (usada pelas funções de leitura).
    - alterar................: executa INSERT/UPDATE/DELETE com commit

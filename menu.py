@@ -166,7 +166,7 @@ def escolhe_comunidade_do_usuario(conexao, usuario: dict) -> int | None:
     """
     try:
         lista = banco.listar_comunidades_do_usuario(conexao, usuario["id"])
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
         return None
 
@@ -183,7 +183,7 @@ def pede_cpf_novo(conexao) -> str:
     Pede o CPF até receber um válido que ainda não esteja cadastrado.
     Entrada: conexao (conexão aberta); CPF pelo teclado (0 para desistir).
     Saida: CPF (str) com 11 números, ou string vazia se o usuário desistiu.
-    Erro: banco.ErroBanco se a consulta falhar.
+    Erro: RuntimeError se a consulta falhar.
     """
     while True:
         cpf = pede_cpf_valido()
@@ -215,7 +215,7 @@ def pede_email_novo(conexao, id_usuario: int = 0) -> str:
              manter o próprio e-mail (0 no cadastro novo); e-mail pelo
              teclado.
     Saida: e-mail (str).
-    Erro: banco.ErroBanco se a consulta falhar.
+    Erro: RuntimeError se a consulta falhar.
     """
     while True:
         email = input("\nE-mail: ").strip()
@@ -235,7 +235,7 @@ def pede_username_novo(conexao, id_usuario: int = 0) -> str:
              manter o próprio username (0 no cadastro novo); username pelo
              teclado.
     Saida: username (str).
-    Erro: banco.ErroBanco se a consulta falhar.
+    Erro: RuntimeError se a consulta falhar.
     """
     while True:
         username = input("\nUsername: ").strip()
@@ -288,7 +288,7 @@ def pede_dados_do_cadastro(conexao) -> dict | None:
     Entrada: conexao (conexão aberta); respostas pelo teclado.
     Saida: dict com cpf, nome, email, username, nascimento e senha; ou None
            se o usuário desistiu no CPF.
-    Erro: banco.ErroBanco se uma consulta falhar.
+    Erro: RuntimeError se uma consulta falhar.
     """
     cpf = pede_cpf_novo(conexao)
 
@@ -331,7 +331,7 @@ def grava_cadastro(conexao, cadastro: dict) -> None:
     Grava o cadastro no banco (CPF com pontos e traço, senha preparada).
     Entrada: conexao (conexão aberta); cadastro (dict).
     Saida: não retorna valor.
-    Erro: banco.ErroBanco se o banco recusar.
+    Erro: RuntimeError se o banco recusar.
     """
     banco.inserir_usuario(
         conexao,
@@ -366,7 +366,7 @@ def cadastrar_usuario_interativo(conexao) -> bool:
         if confirmou:
             grava_cadastro(conexao, cadastro)
 
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
 
     else:
@@ -409,7 +409,7 @@ def entrar_interativo(conexao) -> dict | None:
 
         try:
             usuario = banco.buscar_usuario_por_login(conexao, login, dados.preparar_senha(senha))
-        except banco.ErroBanco as erro:
+        except RuntimeError as erro:
             print(f"\nErro: {erro}")
             return None
 
@@ -447,7 +447,7 @@ def ver_perfil_interativo(conexao, id_usuario: int) -> None:
     """
     try:
         perfil = banco.buscar_perfil(conexao, id_usuario)
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
     else:
         if perfil is None:
@@ -464,7 +464,7 @@ def pede_novo_valor(conexao, opcao: str, id_usuario: int) -> str:
     Entrada: conexao (conexão aberta); opcao (str), 1 (nome) ou 2
              (username); id_usuario (int).
     Saida: novo valor (str).
-    Erro: banco.ErroBanco se uma consulta falhar.
+    Erro: RuntimeError se uma consulta falhar.
     """
     match opcao:
         case "1":
@@ -497,7 +497,7 @@ def alterar_dados_interativo(conexao, usuario: dict) -> bool:
                 conexao, usuario["id"], perfil["nome"], perfil["username"],
             )
 
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
 
     else:
@@ -526,7 +526,7 @@ def alterar_senha_interativo(conexao, id_usuario: int) -> bool:
         trocou = banco.atualizar_senha(
             conexao, id_usuario, dados.preparar_senha(senha_atual), dados.preparar_senha(senha_nova),
         )
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
     else:
         if trocou:
@@ -555,7 +555,7 @@ def excluir_conta_interativo(conexao, usuario: dict) -> bool:
 
         try:
             excluida = banco.excluir_usuario(conexao, usuario["id"], dados.preparar_senha(senha))
-        except banco.ErroBanco as erro:
+        except RuntimeError as erro:
             print(f"\nErro: {erro}")
         else:
             if excluida:
@@ -577,7 +577,7 @@ def listar_minhas_comunidades_interativo(conexao, id_usuario: int) -> None:
     """
     try:
         lista = banco.listar_comunidades_do_usuario(conexao, id_usuario)
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
     else:
         if not lista:
@@ -614,7 +614,7 @@ def entrar_comunidade_interativo(conexao, id_usuario: int) -> bool:
             banco.entrar_na_comunidade(conexao, id_usuario, id_comunidade)
             entrou = True
 
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
 
     else:
@@ -643,7 +643,7 @@ def sair_comunidade_interativo(conexao, id_usuario: int) -> bool:
         if id_comunidade is not None:
             saiu = banco.sair_da_comunidade(conexao, id_usuario, id_comunidade)
 
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
 
     else:
@@ -802,7 +802,6 @@ def mostra_registros_ou_aviso(lista: list[dict], aviso: str) -> None:
 
 
 # REGISTRO DE PONTOS: ciclo (período inicial, retomada e progresso)
-#
 # O "ciclo" é um dict com o andamento do registro (periodo, dia, pontos...),
 # no mesmo formato do dict "progresso" de dados.py, usado para retomar.
 
@@ -1003,7 +1002,7 @@ def grava_acao(conexao, info: dict, pontos: float, usuario: dict, id_comunidade:
         banco.inserir_postagem(
             conexao, info["acao"], info["url"], pontos, usuario["id"], id_comunidade,
         )
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
         return False
 
@@ -1344,7 +1343,7 @@ def escolhe_registro(conexao, id_usuario: int, verbo: str) -> dict:
              completa a pergunta, como "atualizar" ou "excluir".
     Saida: registro escolhido (dict).
     Erro: ValueError se o usuário não tem nenhum registro;
-          banco.ErroBanco se o banco falhar.
+          RuntimeError se o banco falhar.
     """
     registros = banco.listar_postagens(conexao, id_usuario)
 
@@ -1366,7 +1365,7 @@ def listar_registros_interativo(conexao, id_usuario: int) -> None:
     """
     try:
         registros = banco.listar_postagens(conexao, id_usuario)
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
     else:
         mostra_registros_ou_aviso(registros, "\nNenhum registro ainda.")
@@ -1384,7 +1383,7 @@ def buscar_registro_interativo(conexao, id_usuario: int) -> None:
 
     try:
         lista = banco.buscar_postagens(conexao, id_usuario, nome)
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
     else:
         mostra_registros_ou_aviso(lista, "Nada encontrado.")
@@ -1442,7 +1441,7 @@ def atualizar_registro_interativo(conexao, id_usuario: int) -> bool:
         nome = pede_novo_nome()
         alterado = banco.atualizar_postagem(conexao, registro["id"], id_usuario, nome)
 
-    except (ValueError, banco.ErroBanco) as erro:
+    except (ValueError, RuntimeError) as erro:
         print(f"\nErro: {erro}")
 
     else:
@@ -1460,7 +1459,7 @@ def confirma_e_exclui(conexao, registro: dict, id_usuario: int) -> tuple[bool, b
     Pede a confirmação e só exclui no banco se o usuário confirmar.
     Entrada: conexao (conexão aberta); registro (dict); id_usuario (int).
     Saida: tupla (confirmou, excluido), dois bool.
-    Erro: banco.ErroBanco se o banco recusar.
+    Erro: RuntimeError se o banco recusar.
     """
     confirmou = pergunta_sim_nao("Confirma exclusão?")
     excluido = False
@@ -1490,7 +1489,7 @@ def excluir_registro_interativo(conexao, id_usuario: int) -> bool:
 
         confirmou, excluido = confirma_e_exclui(conexao, registro, id_usuario)
 
-    except (ValueError, banco.ErroBanco) as erro:
+    except (ValueError, RuntimeError) as erro:
         print(f"\nErro: {erro}")
 
     else:
@@ -1531,7 +1530,7 @@ def relatorio_por_status_interativo(conexao, id_usuario: int) -> None:
 
     try:
         registros = banco.listar_postagens(conexao, id_usuario)
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
     else:
         lista = dados.filtrar_por_campo(registros, "status", status)
@@ -1548,7 +1547,7 @@ def relatorio_por_pontos_interativo(conexao, id_usuario: int) -> None:
     """
     try:
         registros = banco.listar_postagens(conexao, id_usuario)
-    except banco.ErroBanco as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
     else:
         lista = dados.ordenar_por_pontos(registros)
@@ -1574,7 +1573,7 @@ def exportar_registros_interativo(conexao, usuario: dict) -> None:
             conteudo = exportar.monta_exportacao_crud(usuario, registros)
             caminho = exportar.salvar_json(f"crud_usuario_{usuario['id']}.json", conteudo)
             print(f"\n{len(registros)} registro(s) exportado(s) para:\n{caminho}")
-    except (banco.ErroBanco, exportar.ErroExportacao) as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
 
     pausar()
@@ -1594,7 +1593,7 @@ def exportar_respostas_interativo(usuario: dict, id_comunidade: int | None) -> N
     try:
         conteudo = exportar.monta_exportacao_respostas(usuario, id_comunidade, dados.respostas_usuario)
         caminho = exportar.salvar_json(f"respostas_usuario_{usuario['id']}.json", conteudo)
-    except exportar.ErroExportacao as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
     else:
         print(f"\n{len(dados.respostas_usuario)} dia(s) exportado(s) para:\n{caminho}")
@@ -1636,7 +1635,7 @@ def ranking_api_interativo() -> None:
 
     try:
         usuarios = api.listar_usuarios_api()
-    except api.ErroApi as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
     else:
         mostra_ranking(dados.ordenar_por_pontos(usuarios))
@@ -1656,7 +1655,7 @@ def postagens_da_comunidade_api_interativo() -> None:
     try:
         comunidades = api.listar_comunidades_api()
         postagens = api.listar_postagens_api()
-    except api.ErroApi as erro:
+    except RuntimeError as erro:
         print(f"\nErro: {erro}")
         pausar()
         return

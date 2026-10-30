@@ -15,10 +15,6 @@ URL_BASE: str = "https://guara-api.onrender.com"
 TEMPO_LIMITE: int = 120   # segundos; o Render gratuito pode levar mais de 1 min para "acordar"
 
 
-class ErroApi(Exception):
-    """Erro de API com mensagem amigável para mostrar ao usuário."""
-
-
 # ---------------------------------------------------------------------------
 # REQUISIÇÃO
 # ---------------------------------------------------------------------------
@@ -28,7 +24,7 @@ def buscar_json(caminho: str) -> list[dict]:
     Faz um GET na API e devolve o JSON da resposta.
     Entrada: caminho (str), por exemplo "/usuarios".
     Saida: lista de dicts com o conteúdo do JSON.
-    Erro: ErroApi se a API não responder, devolver erro HTTP ou um JSON
+    Erro: RuntimeError se a API não responder, devolver erro HTTP ou um JSON
           que não seja uma lista.
     """
     try:
@@ -37,19 +33,19 @@ def buscar_json(caminho: str) -> list[dict]:
         resposta.raise_for_status()
         conteudo = resposta.json()
     except requests.Timeout:
-        raise ErroApi("A API demorou demais para responder. Tente de novo.")
+        raise RuntimeError("A API demorou demais para responder. Tente de novo.")
     except requests.ConnectionError:
-        raise ErroApi("Não foi possível conectar à API. Verifique a internet.")
+        raise RuntimeError("Não foi possível conectar à API. Verifique a internet.")
     except requests.HTTPError as erro:
-        raise ErroApi(f"A API devolveu erro {erro.response.status_code} em {caminho}.")
+        raise RuntimeError(f"A API devolveu erro {erro.response.status_code} em {caminho}.")
     except ValueError:
-        raise ErroApi("A API devolveu uma resposta que não é JSON.")
+        raise RuntimeError("A API devolveu uma resposta que não é JSON.")
     except requests.RequestException:
-        raise ErroApi("Não foi possível consultar a API.")
+        raise RuntimeError("Não foi possível consultar a API.")
 
     # A API deve devolver uma lista; outra coisa é resposta inesperada
     if not isinstance(conteudo, list):
-        raise ErroApi(f"Resposta inesperada da API em {caminho}.")
+        raise RuntimeError(f"Resposta inesperada da API em {caminho}.")
 
     return conteudo
 
@@ -62,7 +58,7 @@ def listar_usuarios_api() -> list[dict]:
     GET /usuarios: lista os usuários cadastrados na plataforma.
     Entrada: não recebe parâmetros.
     Saida: lista de dicts com id, nome, username, pontos e perfil.
-    Erro: ErroApi se a consulta falhar.
+    Erro: RuntimeError se a consulta falhar.
     """
     dados = buscar_json("/usuarios")
     lista = []
@@ -78,7 +74,7 @@ def listar_usuarios_api() -> list[dict]:
                 "perfil": item["tipoPerfil"],
             })
     except (KeyError, TypeError, ValueError):
-        raise ErroApi("Os usuários vieram da API em formato inesperado.")
+        raise RuntimeError("Os usuários vieram da API em formato inesperado.")
 
     return lista
 
@@ -88,7 +84,7 @@ def listar_comunidades_api() -> list[dict]:
     GET /comunidades: lista as comunidades da plataforma.
     Entrada: não recebe parâmetros.
     Saida: lista de dicts com id, nome e descricao.
-    Erro: ErroApi se a consulta falhar.
+    Erro: RuntimeError se a consulta falhar.
     """
     dados = buscar_json("/comunidades")
     lista = []
@@ -102,7 +98,7 @@ def listar_comunidades_api() -> list[dict]:
                 "descricao": item["descricao"],
             })
     except (KeyError, TypeError):
-        raise ErroApi("As comunidades vieram da API em formato inesperado.")
+        raise RuntimeError("As comunidades vieram da API em formato inesperado.")
 
     return lista
 
@@ -114,7 +110,7 @@ def listar_postagens_api() -> list[dict]:
     Entrada: não recebe parâmetros.
     Saida: lista de dicts com id, acao, url, status, pontos, id_usuario e
            id_comunidade.
-    Erro: ErroApi se a consulta falhar.
+    Erro: RuntimeError se a consulta falhar.
     """
     dados = buscar_json("/postagens")
     lista = []
@@ -132,6 +128,6 @@ def listar_postagens_api() -> list[dict]:
                 "id_comunidade": item["idComunidade"],
             })
     except (KeyError, TypeError, ValueError):
-        raise ErroApi("As postagens vieram da API em formato inesperado.")
+        raise RuntimeError("As postagens vieram da API em formato inesperado.")
 
     return lista

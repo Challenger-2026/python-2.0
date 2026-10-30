@@ -51,7 +51,7 @@ try:
                     fluxo.reinicia_sessao(sessao)
 
     print("Encerrando o sistema...")
-except banco.ErroBanco as erro:
+except RuntimeError as erro:
     print(f"\nErro: {erro}")
 except (KeyboardInterrupt, EOFError):
     # Ctrl+C ou Ctrl+D encerram o sistema sem mostrar o erro do Python
