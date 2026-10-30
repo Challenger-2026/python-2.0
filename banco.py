@@ -78,11 +78,11 @@ def conectar() -> oracledb.Connection:
 
 # EXECUÇÃO DE SQL (usadas por todas as funções abaixo)
 
-def consultar(conexao: oracledb.Connection, sql: str, mensagem: str, **parametros) -> list:
+def consultar(conexao: oracledb.Connection, sql: str, mensagem: str, parametros: dict) -> list:
     """
     Executa um SELECT e devolve todas as linhas.
     Entrada: conexao (conexão aberta); sql (str) com parâmetros nomeados
-             (:nome); mensagem (str) que começa o texto do erro; parametros
+             (:nome); mensagem (str) que começa o texto do erro; parametros (dict)
              com os valores de cada :nome.
     Saida: lista de tuplas, podendo estar vazia.
     Erro: RuntimeError se o banco recusar.
@@ -90,7 +90,7 @@ def consultar(conexao: oracledb.Connection, sql: str, mensagem: str, **parametro
     cursor = conexao.cursor()
 
     try:
-        cursor.execute(sql, **parametros)
+        cursor.execute(sql, parametros)
         linhas = cursor.fetchall()
     except oracledb.Error as erro:
         raise RuntimeError(f"{mensagem}: {erro}")
@@ -100,7 +100,7 @@ def consultar(conexao: oracledb.Connection, sql: str, mensagem: str, **parametro
     return linhas
 
 
-def alterar(conexao: oracledb.Connection, sql: str, mensagem: str, **parametros) -> int:
+def alterar(conexao: oracledb.Connection, sql: str, mensagem: str, parametros: dict) -> int:
     """
     Executa um INSERT, UPDATE ou DELETE. Confirma (commit) se deu certo e
     desfaz (rollback) se o banco recusar.
@@ -112,7 +112,7 @@ def alterar(conexao: oracledb.Connection, sql: str, mensagem: str, **parametros)
     cursor = conexao.cursor()
 
     try:
-        cursor.execute(sql, **parametros)
+        cursor.execute(sql, parametros)
         quantidade = cursor.rowcount
     except oracledb.Error as erro:
         conexao.rollback()
@@ -141,7 +141,7 @@ def buscar_usuario_por_login(conexao: oracledb.Connection, login: str, senha: st
         WHERE (UPPER(username) = UPPER(:login) OR UPPER(email) = UPPER(:login))
           AND senha = :senha
     """
-    linhas = consultar(conexao, sql, "Erro ao entrar", login=login, senha=senha)
+    linhas = consultar(conexao, sql, "Erro ao entrar", {"login": login, "senha": senha})
 
     if not linhas:
         return None
@@ -168,7 +168,7 @@ def campo_ja_cadastrado(conexao: oracledb.Connection, campo: str, valor: str, id
         condicao = "UPPER(username) = UPPER(:valor)"
 
     sql = f"SELECT COUNT(*) FROM T_LGT_USUARIO WHERE {condicao} AND id_usuario <> :id_usuario"
-    linhas = consultar(conexao, sql, "Erro ao verificar o cadastro", valor=valor, id_usuario=id_usuario)
+    linhas = consultar(conexao, sql, "Erro ao verificar o cadastro", {"valor": valor, "id_usuario": id_usuario})
 
     return linhas[0][0] > 0
 
@@ -199,8 +199,8 @@ def inserir_usuario(
     """
     alterar(
         conexao, sql, "Não foi possível cadastrar o usuário",
-        nome=nome, cpf=cpf, email=email, username=username,
-        senha=senha, nascimento=nascimento, perfil=PERFIL_COMUM,
+        {"nome": nome, "cpf": cpf, "email": email, "username": username,
+         "senha": senha, "nascimento": nascimento, "perfil": PERFIL_COMUM},
     )
 
 
@@ -217,7 +217,7 @@ def buscar_perfil(conexao: oracledb.Connection, id_usuario: int) -> dict | None:
         FROM T_LGT_USUARIO
         WHERE id_usuario = :id_usuario
     """
-    linhas = consultar(conexao, sql, "Erro ao buscar o perfil", id_usuario=id_usuario)
+    linhas = consultar(conexao, sql, "Erro ao buscar o perfil", {"id_usuario": id_usuario})
 
     if not linhas:
         return None
@@ -250,7 +250,7 @@ def atualizar_usuario(conexao: oracledb.Connection, id_usuario: int, nome: str, 
     """
     quantidade = alterar(
         conexao, sql, "Não foi possível atualizar o perfil",
-        nome=nome, username=username, id_usuario=id_usuario,
+        {"nome": nome, "username": username, "id_usuario": id_usuario},
     )
 
     return quantidade > 0
@@ -271,7 +271,7 @@ def atualizar_senha(conexao: oracledb.Connection, id_usuario: int, senha_atual: 
     """
     quantidade = alterar(
         conexao, sql, "Não foi possível trocar a senha",
-        senha_nova=senha_nova, id_usuario=id_usuario, senha_atual=senha_atual,
+        {"senha_nova": senha_nova, "id_usuario": id_usuario, "senha_atual": senha_atual},
     )
 
     return quantidade > 0
@@ -290,7 +290,7 @@ def excluir_usuario(conexao: oracledb.Connection, id_usuario: int, senha: str) -
     quantidade = alterar(
         conexao, sql,
         "Não foi possível excluir a conta (contas com postagens, comunidades ou outros vínculos não podem ser excluídas)",
-        id_usuario=id_usuario, senha=senha,
+        {"id_usuario": id_usuario, "senha": senha},
     )
 
     return quantidade > 0
@@ -305,7 +305,7 @@ def listar_comunidades(conexao: oracledb.Connection) -> list[dict]:
     Saida: lista de dicts com id e nome, podendo estar vazia.
     """
     sql = "SELECT id_comunidade, nm_comunidade FROM T_LGT_COMUNIDADE ORDER BY id_comunidade"
-    linhas = consultar(conexao, sql, "Erro ao consultar as comunidades")
+    linhas = consultar(conexao, sql, "Erro ao consultar as comunidades", {})
     lista = []
 
     for linha in linhas:
@@ -328,7 +328,7 @@ def entrar_na_comunidade(conexao: oracledb.Connection, id_usuario: int, id_comun
     """
     alterar(
         conexao, sql, "Não foi possível entrar na comunidade",
-        id_usuario=id_usuario, id_comunidade=id_comunidade, membro=MEMBRO,
+        {"id_usuario": id_usuario, "id_comunidade": id_comunidade, "membro": MEMBRO},
     )
 
 
@@ -346,7 +346,7 @@ def sair_da_comunidade(conexao: oracledb.Connection, id_usuario: int, id_comunid
     """
     quantidade = alterar(
         conexao, sql, "Não foi possível sair da comunidade",
-        id_usuario=id_usuario, id_comunidade=id_comunidade,
+        {"id_usuario": id_usuario, "id_comunidade": id_comunidade},
     )
 
     return quantidade > 0
@@ -368,7 +368,7 @@ def listar_comunidades_do_usuario(conexao: oracledb.Connection, id_usuario: int)
         WHERE uc.T_LGT_USUARIO_id_usuario = :id_usuario
         ORDER BY c.id_comunidade
     """
-    linhas = consultar(conexao, sql, "Erro ao consultar as comunidades", id_usuario=id_usuario)
+    linhas = consultar(conexao, sql, "Erro ao consultar as comunidades", {"id_usuario": id_usuario})
     lista = []
 
     for linha in linhas:
@@ -439,8 +439,8 @@ def inserir_postagem(
     """
     alterar(
         conexao, sql, "Não foi possível registrar a ação",
-        acao=acao, url=url, status=STATUS_PENDENTE, pontos=pontos,
-        id_usuario=id_usuario, id_comunidade=id_comunidade,
+        {"acao": acao, "url": url, "status": STATUS_PENDENTE, "pontos": pontos,
+         "id_usuario": id_usuario, "id_comunidade": id_comunidade},
     )
 
 
@@ -456,7 +456,7 @@ def listar_postagens(conexao: oracledb.Connection, id_usuario: int) -> list[dict
         WHERE T_LGT_USUARIO_id_usuario = :id_usuario
         ORDER BY id_postagem
     """
-    linhas = consultar(conexao, sql, "Erro ao listar os registros", id_usuario=id_usuario)
+    linhas = consultar(conexao, sql, "Erro ao listar os registros", {"id_usuario": id_usuario})
 
     return montar_lista_de_postagens(linhas)
 
@@ -476,7 +476,7 @@ def buscar_postagens(conexao: oracledb.Connection, id_usuario: int, nome: str) -
           AND UPPER(DBMS_LOB.SUBSTR(ct_texto, 4000, 1)) = UPPER(:nome)
         ORDER BY id_postagem
     """
-    linhas = consultar(conexao, sql, "Erro ao buscar os registros", id_usuario=id_usuario, nome=nome)
+    linhas = consultar(conexao, sql, "Erro ao buscar os registros", {"id_usuario": id_usuario, "nome": nome})
 
     return montar_lista_de_postagens(linhas)
 
@@ -500,7 +500,7 @@ def atualizar_postagem(conexao: oracledb.Connection, id_postagem: int,
     """
     quantidade = alterar(
         conexao, sql, "Não foi possível atualizar o registro",
-        nome=nome, id_postagem=id_postagem, id_usuario=id_usuario, status=STATUS_PENDENTE,
+        {"nome": nome, "id_postagem": id_postagem, "id_usuario": id_usuario, "status": STATUS_PENDENTE},
     )
 
     # 0 se o registro não existe, não é do usuário ou não está PENDENTE
@@ -523,7 +523,7 @@ def excluir_postagem(conexao: oracledb.Connection, id_postagem: int, id_usuario:
     """
     quantidade = alterar(
         conexao, sql, "Não foi possível excluir o registro",
-        id_postagem=id_postagem, id_usuario=id_usuario, status=STATUS_PENDENTE,
+        {"id_postagem": id_postagem, "id_usuario": id_usuario, "status": STATUS_PENDENTE},
     )
 
     # 0 se o registro não existe, não é do usuário ou não está PENDENTE

@@ -300,7 +300,7 @@ registrar pontos.
     e Ctrl+D encerram o sistema com uma mensagem; conexão fechada no
     finally) e menu.py
     (atualizar_registro_interativo e excluir_registro_interativo).
-    Os erros são convertidos nas exceções próprias RuntimeError com mensagens amigáveis; o programa não fecha
+    Os erros são convertidos em RuntimeError (exceção do próprio Python) com mensagens amigáveis; o programa não fecha
     por causa delas.
 
 - Validação de dados (entrada e processamento):

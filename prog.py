@@ -3,7 +3,7 @@ Programa principal do Sistema de Pontos Ambientais - Lobo-guará Tech.
 
 Abre a conexão com o banco e repete o menu de entrada (ninguém na conta)
 ou o menu principal (usuário na conta) até o usuário sair. Cada opção é
-tratada num match/case que chama as funções de main.py e menu.py.
+tratada num match/case que chama as funções de fluxo.py e menu.py.
 Para rodar o sistema: python prog.py
 """
 
