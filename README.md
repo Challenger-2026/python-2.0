@@ -9,7 +9,7 @@ Programa de console em Python que registra ações ambientais de um usuário e a
 
 ## 0. Identificação do grupo
 
-**Equipe:** LOBO-GUARÁ TECH
+**Equipe:** Lobo-guará Tech
 
 | Integrante | RM |
 |---|---|
@@ -201,6 +201,13 @@ Os arquivos JSON são gravados na pasta `exportacoes` (criada automaticamente), 
 3. **Voltar**
 
 Não exige estar na conta (também aparece no menu de entrada). O Render gratuito pode levar mais de 1 minuto para "acordar" na primeira chamada; por isso o tempo limite da requisição é de 120 segundos.
+
+### 3.11. Limitações conhecidas
+
+- Em *Registrar pontos*, cada dia aceita **uma** ação ambiental. Não é possível registrar mais de uma atividade no mesmo dia, mesmo que ainda haja espaço no teto de pontos.
+- A pontuação base do dia não é gravada junto com a postagem no banco, que guarda só os pontos da ação. Por isso o total exibido no simulador pode ser diferente da soma dos pontos que aparecem no site e na API.
+
+Essas regras ficam como possíveis melhorias para uma versão futura do sistema.
 
 ---
 
