@@ -241,32 +241,22 @@ def buscar_perfil(conexao: oracledb.Connection, id_usuario: int) -> dict | None:
     }
 
 
-def atualizar_usuario(
-    conexao: oracledb.Connection,
-    id_usuario: int,
-    nome: str,
-    email: str,
-    username: str,
-    nascimento,
-) -> bool:
+def atualizar_usuario(conexao: oracledb.Connection, id_usuario: int, nome: str, username: str) -> bool:
     """
-    UPDATE: troca nome, e-mail, username e data de nascimento. CPF, perfil,
+    UPDATE: troca nome e username. E-mail, data de nascimento, CPF, perfil,
     nível e pontos não são alterados por aqui.
-    Entrada: conexao; id_usuario (int); nome, email e username (str);
-             nascimento (datetime).
+    Entrada: conexao; id_usuario (int); nome e username (str).
     Saida: True se atualizou; False se o usuário não existe.
-    Erro: ErroBanco se o banco recusar (por exemplo, e-mail repetido).
+    Erro: ErroBanco se o banco recusar (por exemplo, username repetido).
     """
     sql = """
         UPDATE T_LGT_USUARIO
-        SET nm_completo = :nome, email = :email, username = :username,
-            dt_nascimento = :nascimento
+        SET nm_completo = :nome, username = :username
         WHERE id_usuario = :id_usuario
     """
     quantidade = alterar(
         conexao, sql, "Não foi possível atualizar o perfil",
-        nome=nome, email=email, username=username,
-        nascimento=nascimento, id_usuario=id_usuario,
+        nome=nome, username=username, id_usuario=id_usuario,
     )
 
     return quantidade > 0

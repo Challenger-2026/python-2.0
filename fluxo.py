@@ -1,5 +1,5 @@
 """
-Ponto de entrada do Sistema de Pontos Ambientais - Lobo-guará Tech.
+Funções de apoio do programa principal (prog.py) do Sistema de Pontos Ambientais - Lobo-guará Tech.
 
 O sistema abre direto no menu de entrada (Entrar, Cadastrar-se ou consultar
 a API pública), como uma rede social. Depois do login, o usuário vê o menu
@@ -198,76 +198,6 @@ def executa_menu_api() -> None:
                 return
 
 
-def trata_menu_inicial(conexao, sessao: dict) -> bool:
-    """
-    Mostra o menu de entrada (ninguém na conta) e executa a opção escolhida.
-    Entrada: conexao (conexão aberta); sessao (dict) que é atualizado no
-             login.
-    Saida: False se o usuário escolheu sair do sistema; True nos demais casos.
-    """
-    opcao = menu.menu_inicial()
-
-    match opcao:
-        case "0":
-            return False
-        case "1":
-            entra_na_conta(conexao, sessao)
-        case "2":
-            menu.cadastrar_usuario_interativo(conexao)
-        case "3":
-            executa_menu_api()
-
-    return True
-
-
-def trata_menu_principal(conexao, sessao: dict) -> bool:
-    """
-    Mostra o menu principal (usuário na conta) e executa a opção escolhida.
-    Entrada: conexao (conexão aberta); sessao (dict) com usuario e
-             id_comunidade.
-    Saida: False se o usuário escolheu encerrar o sistema; True nos demais
-           casos (inclusive ao sair da conta).
-    """
-    opcao = menu.menu_principal(sessao["usuario"]["nome"])
-
-    match opcao:
-        case "0":
-            return False
-        case "1":
-            registra_pontos_da_sessao(conexao, sessao)
-        case "2":
-            executa_menu_crud(conexao, sessao)
-        case "3":
-            executa_menu_relatorios(conexao, sessao["usuario"], sessao["id_comunidade"])
-        case "4":
-            executa_menu_conta(conexao, sessao)
-        case "5":
-            executa_menu_api()
-        case "6":
-            reinicia_sessao(sessao)
-
-    return True
-
-
-def executa_sistema(conexao) -> None:
-    """
-    Repete o menu de entrada (se ninguém está na conta) ou o menu principal
-    (se alguém entrou) até o usuário sair do sistema.
-    Entrada: conexao (conexão aberta).
-    Saida: não retorna valor.
-    """
-    sessao = {"usuario": None, "id_comunidade": None}
-    continuar = True
-
-    while continuar:
-        if sessao["usuario"] is None:
-            continuar = trata_menu_inicial(conexao, sessao)
-        else:
-            continuar = trata_menu_principal(conexao, sessao)
-
-    print("Encerrando o sistema...")
-
-
 def limpa_tela() -> None:
     """
     Limpa o terminal (cls no Windows, clear nos outros sistemas).
@@ -278,34 +208,3 @@ def limpa_tela() -> None:
         os.system("cls")
     else:
         os.system("clear")
-
-
-def iniciar_sistema() -> None:
-    """
-    Abre a conexão com o banco, executa o sistema e fecha a conexão no fim.
-    O sistema começa direto no menu de entrada.
-    Entrada: não recebe parametros; utiliza os menus interativos.
-    Saida: não retorna valor.
-    """
-    limpa_tela()
-
-    try:
-        conexao = banco.conectar()
-    except banco.ErroBanco as erro:
-        print(f"Erro: {erro}")
-        return
-
-    try:
-        executa_sistema(conexao)
-    except banco.ErroBanco as erro:
-        print(f"\nErro: {erro}")
-    except (KeyboardInterrupt, EOFError):
-        # Ctrl+C ou Ctrl+D encerram o sistema sem mostrar o erro do Python
-        print("\nSistema encerrado.")
-    finally:
-        # Fecha a conexão com o banco mesmo se ocorrer erro
-        conexao.close()
-
-
-if __name__ == "__main__":
-    iniciar_sistema()

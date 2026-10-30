@@ -14,16 +14,16 @@ from datetime import datetime
 
 # Cada período é uma tupla: (id, faixa_dias, pontos_por_dia_texto, total_texto, limite_dias)
 periodos: list[tuple] = [
-    (1, "1 a 7 dias", "1 ponto por dia", "7 pontos", 7),
-    (2, "8 a 15 dias", "2 pontos por dia", "16 pontos", 15),
-    (3, "16 a 30 dias", "3 pontos por dia", "45 pontos", 30),
+    (1, "1 a 7 dias", "10 pts por dia", "70 pts", 7),
+    (2, "8 a 15 dias", "20 pts por dia", "160 pts", 15),
+    (3, "16 a 30 dias", "30 pts por dia", "450 pts", 30),
 ]
 
 # Cada nível de impacto é uma tupla: (id, nome, peso).
 niveis_impacto: list[tuple] = [
-    (1, "Alto", 1.06),
-    (2, "Médio", 0.66),
-    (3, "Baixo", 0.16),
+    (1, "Crítico", 10.6),
+    (2, "Estrutural", 6.6),
+    (3, "Rotina", 1.6),
 ]
 
 # Respostas dadas em "Registrar pontos", uma por dia registrado (usadas na
@@ -42,9 +42,9 @@ progresso: dict = {
     "dias_registrados": 0,
 }
 
-LIMITE_TOTAL: float = 100.0
-LIMITE_DIAS: float = 68.0
-LIMITE_ACOES: float = 31.80
+LIMITE_TOTAL: float = 1000.0
+LIMITE_DIAS: float = 680.0
+LIMITE_ACOES: float = 318.0
 
 # VALIDAÇÃO
 
@@ -211,11 +211,11 @@ def base_diaria(dia: int) -> float:
     Saida: pontuação base (float).
     """
     if dia <= 7:
-        return 1.0
+        return 10.0
     elif dia <= 15:
-        return 2.0
+        return 20.0
     else:
-        return 3.0
+        return 30.0
 
 
 def peso_do_nivel(lista: list[tuple], numero: int) -> float:

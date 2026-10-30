@@ -43,9 +43,12 @@ gravado no mesmo banco usado pela API Java, e o que foi cadastrado pela platafor
 relevantes para o projeto porque são exatamente os do desafio: ações
 sustentáveis, pontuação e ranking.
 
-O código é dividido em 6 arquivos:
+O código é dividido em 7 arquivos:
 
-  - main.py     -> ponto de entrada; organiza o fluxo entre os menus.
+  - prog.py     -> programa principal (ponto de entrada); menu de
+                   entrada e menu principal com match/case.
+  - fluxo.py     -> funções de apoio do prog.py (sessão, login e os
+                   submenus).
   - menu.py     -> tudo que aparece na tela e tudo que o usuário
                    digita (menus, tabelas, perguntas).
   - dados.py    -> estruturas de dados (períodos, níveis de impacto),
@@ -79,7 +82,7 @@ json, os, datetime e textwrap fazem parte da biblioteca padrão.
    no .gitignore).
 
 3) Rodar:
-       python main.py
+       python prog.py
 
 Tabelas usadas, as mesmas da API Java: T_LGT_USUARIO,
 T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
@@ -97,8 +100,8 @@ registrar pontos.
    entrada (nenhuma pergunta é feita antes dele), como uma rede
    social. Se o banco não responder ou se faltar o .env, mostra a
    mensagem de erro e encerra. A conexão é fechada no final, no bloco
-   finally. Cada menu é um match/case em main.py que chama a função
-   correspondente a cada opção.
+   finally. Cada menu é um match/case (em prog.py e fluxo.py) que chama
+   a função correspondente a cada opção.
 
 3.2. Menu de entrada (ninguém na conta)
      0. Sair
@@ -111,8 +114,7 @@ registrar pontos.
    Pergunta, um por vez:
      CPF (0 volta) -> nome completo (nome e sobrenome) -> e-mail ->
      username (3 a 50 letras, números ou _) -> data de nascimento
-     (dd/mm/aaaa) -> senha (mínimo 6 caracteres, digitada duas vezes,
-     sem aparecer na tela).
+     (dd/mm/aaaa) -> senha (mínimo 6 caracteres, digitada duas vezes).
    CPF, e-mail e username não podem se repetir: o sistema consulta o
    banco e pede outro valor se já existir (o banco também tem
    restrição UNIQUE nesses campos). Antes de gravar, mostra um resumo
@@ -127,7 +129,7 @@ registrar pontos.
    pelo site não conseguem entrar pelo Python e vice-versa.
 
 3.4. Entrar (login)
-   Pede o username ou o e-mail e a senha (sem aparecer na tela), com
+   Pede o username ou o e-mail e a senha, com
    até 3 tentativas; digitar 0 no login volta. A senha é conferida no
    próprio SELECT (WHERE ... AND senha = :senha), sem ser lida do
    banco. Se der certo, dá boas-vindas e abre o menu principal.
@@ -145,10 +147,9 @@ registrar pontos.
 3.6. Minha conta (CRUD do cadastro do usuário)
      1. Ver perfil        - nome, e-mail, username, nascimento, perfil,
                             nível e pontos; sem CPF e sem senha (READ).
-     2. Alterar dados     - escolhe nome, e-mail, username ou data de
-                            nascimento e grava o novo valor; e-mail e
-                            username novos não podem repetir os de
-                            outra pessoa (UPDATE).
+    2. Alterar dados     - escolhe nome ou username e grava o novo
+                            valor; o username novo não pode repetir o
+                            de outra pessoa (UPDATE).
      3. Alterar senha     - exige a senha atual (UPDATE).
      4. Minhas comunidades (submenu):
           1. Ver minhas comunidades (READ)
@@ -169,19 +170,17 @@ registrar pontos.
    a) Se a comunidade ainda não foi escolhida na sessão, mostra as
       comunidades do usuário e pede em qual registrar. Sem
       comunidade, avisa para entrar em uma em Minha conta.
-   b) Mostra os períodos (1 a 7 dias, 8 a 15 dias, 16 a 30 dias) e
+   b) Mostra os períodos (1 a 7 dias, 8 a 15 dias, 16 a 30 dias), valendo 10, 20 e 30 pontos por dia e
       pede o período inicial. Se havia progresso salvo, pergunta se
       continua de onde parou ou recomeça.
    c) Para cada dia, pergunta se houve ação ambiental:
         - Não: o dia vale 0 pontos e não é gravado no banco.
-        - Sim: pede o nível de impacto (Alto 1,06 / Médio 0,66 /
-          Baixo 0,16), o nome da ação e o link da evidência (precisa
+        - Sim: pede o nível de impacto (Crítico 10,6 / Estrutural 6,6 / + Rotina 1,6), o nome da ação e o link da evidência (precisa
           começar com http:// ou https://). Calcula os pontos do dia
-          respeitando os limites (100 no total, 68 pelos dias e
-          31,80 pelas ações) e grava a ação no banco como postagem
+          respeitando os limites (1000 no total, 680 pelos dias e + 318 pelas ações) e grava a ação no banco como postagem
           PENDENTE.
    d) Se o banco recusar o registro, o cálculo do dia é desfeito.
-   e) O ciclo termina ao chegar em 100 pontos ou no dia 30; mostra o
+   e) O ciclo termina ao chegar em 1000 pontos ou no dia 30; mostra o
       resumo final. Se o usuário parar antes, o progresso fica salvo
       para continuar depois.
 
@@ -237,8 +236,8 @@ registrar pontos.
 ----------------------------------------------------------------
 
 - Menus e submenus de acesso ao CRUD:
-    main.py (trata_menu_inicial, trata_menu_principal,
-    executa_menu_crud, executa_menu_relatorios, executa_menu_conta,
+    prog.py (match/case do menu de entrada e do principal), fluxo.py
+    (executa_menu_crud, executa_menu_relatorios, executa_menu_conta,
     executa_menu_comunidades, executa_menu_api) e menu.py (menu_*).
     Todos os menus usam match/case e cada case chama a função
     correspondente.
@@ -258,8 +257,8 @@ registrar pontos.
     listar_comunidades_do_usuario.
 
 - Sistema iniciado por um menu, sem pedir dados antes:
-    main.py (iniciar_sistema abre a conexão e chama executa_sistema,
-    que mostra o menu de entrada ou o principal).
+    prog.py (abre a conexão e repete o menu de entrada ou o principal
+    até o usuário sair).
 
 - Subalgoritmos com uma única responsabilidade: as funções longas
   foram divididas. Exemplos: banco.py (consultar e alterar executam o
@@ -268,8 +267,8 @@ registrar pontos.
   mostra_registros_numerados; grava_acao, monta_resultado,
   guarda_resposta e registra_dia; escolhe_ciclo e registrar_pontos;
   pede_opcao, usada por todos os menus; cada campo do cadastro tem a
-  sua função pede_*), main.py (reinicia_sessao, entra_na_conta,
-  trata_menu_inicial, trata_menu_principal e executa_sistema).
+  sua função pede_*), fluxo.py (reinicia_sessao, entra_na_conta,
+  executa_menu_crud, executa_menu_conta e os demais submenus).
 
 - Funções genéricas, com parâmetros de nome genérico, para reaproveitar
   código: dados.py (filtrar_por_campo serve para qualquer lista de
@@ -296,8 +295,9 @@ registrar pontos.
     banco.py (rollback no except, commit no else, cursor.close() no
     finally), api.py (Timeout, ConnectionError, HTTPError, JSON
     inválido e outras falhas do requests), exportar.py
-    (OSError/TypeError), main.py (Ctrl+C e Ctrl+D encerram o sistema
-    com uma mensagem) e menu.py
+    (OSError/TypeError), prog.py (erro de conexão com o banco; Ctrl+C
+    e Ctrl+D encerram o sistema com uma mensagem; conexão fechada no
+    finally) e menu.py
     (atualizar_registro_interativo e excluir_registro_interativo).
     Os erros são convertidos nas exceções próprias ErroBanco, ErroApi
     e ErroExportacao, com mensagens amigáveis; o programa não fecha
@@ -365,7 +365,7 @@ registrar pontos.
                               (ignorando o próprio usuário, se pedido).
    - inserir_usuario........: CREATE de usuário (perfil COMUM).
    - buscar_perfil..........: READ do perfil (sem CPF e sem senha).
-   - atualizar_usuario......: UPDATE de nome, e-mail, username e data
+   - atualizar_usuario......: UPDATE de nome e username.
                               de nascimento.
    - atualizar_senha........: UPDATE da senha (exige a senha atual).
    - excluir_usuario........: DELETE da conta (exige a senha).
@@ -433,15 +433,8 @@ registrar pontos.
    - menu_inicial, menu_principal, menu_conta, menu_alterar_dados,
      menu_comunidades, menu_crud, menu_relatorios, menu_api: menus.
 
-5.6. main.py (orquestração)
+5.6. fluxo.py (funções de apoio do prog.py)
 
-   - iniciar_sistema........: abre a conexão, roda o sistema e fecha a
-                              conexão no finally. É chamada no final do
-                              arquivo, dentro do if __name__ == "__main__".
-   - executa_sistema........: repete o menu de entrada ou o principal
-                              até o usuário sair do sistema.
-   - trata_menu_inicial.....: match/case do menu de entrada.
-   - trata_menu_principal...: match/case do menu principal.
    - entra_na_conta.........: faz o login e guarda o usuário na sessão.
    - reinicia_sessao........: zera usuário, progresso e respostas.
    - limpa_tela.............: limpa o terminal ao abrir.
@@ -450,6 +443,13 @@ registrar pontos.
    - executa_menu_crud / executa_menu_relatorios / executa_menu_conta /
      executa_menu_comunidades / executa_menu_api: loops dos submenus,
      cada um com match/case.
+
+5.7. prog.py (programa principal)
+
+   Não tem funções: é o código que roda ao executar "python prog.py".
+   Limpa a tela, abre a conexão, repete o menu de entrada ou o
+   principal (match/case chamando as funções de fluxo.py e menu.py) até
+   o usuário sair e fecha a conexão no finally.
 
 
 ----------------------------------------------------------------
@@ -474,7 +474,9 @@ sugeriu:
 
   - correções e mudanças nos textos do DOCUMENTACAO.txt e do
     requirements.txt;
-  - geração do .env e do .gitignore.
+  - geração do .env e do .gitignore;
+  - separação do programa principal em prog.py, com as funções de
+    apoio em fluxo.py, seguindo o padrão usado em aula.
 
 Aprendizado obtido: a ferramenta ajudou o grupo a identificar e
 corrigir alguns erros de lógica e de sintaxe enfrentados durante o

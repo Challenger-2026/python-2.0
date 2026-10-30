@@ -9,8 +9,6 @@ mostramos o resultado. Cada função tem uma única responsabilidade:
 as funções "pede_*" fazem uma pergunta, as "mostra_*" imprimem algo e
 as "*_interativo" juntam essas peças em uma tela completa.
 """
-
-import getpass
 import textwrap
 
 import api
@@ -269,16 +267,16 @@ def pede_data_nascimento():
 
 def pede_senha_nova() -> str:
     """
-    Pede a senha duas vezes (sem mostrar na tela) até as duas coincidirem.
+    Pede a senha duas vezes até as duas coincidirem.
     Entrada: senha pelo teclado.
     Saida: senha (str).
     """
     while True:
-        senha = getpass.getpass("\nSenha (mínimo 6 caracteres, sem espaços): ")
+        senha = input("\nSenha (mínimo 6 caracteres, sem espaços): ")
 
         if not dados.senha_valida(senha):
             print("Senha inválida.")
-        elif senha != getpass.getpass("Repita a senha: "):
+        elif senha != input("Repita a senha: "):
             print("As senhas não conferem.")
         else:
             return senha
@@ -386,7 +384,7 @@ def cadastrar_usuario_interativo(conexao) -> bool:
 # LOGIN E CONTA DO USUÁRIO (CRUD DO CADASTRO)
 
 # Campo do perfil escolhido em "Alterar dados" -> chave do dict do perfil
-CAMPOS_DO_PERFIL: dict = {"1": "nome", "2": "email", "3": "username", "4": "nascimento"}
+CAMPOS_DO_PERFIL: dict = {"1": "nome", "2": "username"}
 
 TENTATIVAS_DE_LOGIN: int = 3
 
@@ -407,7 +405,7 @@ def entrar_interativo(conexao) -> dict | None:
         if login == "0":
             return None
 
-        senha = getpass.getpass("Senha: ")
+        senha = input("Senha: ")
 
         try:
             usuario = banco.buscar_usuario_por_login(conexao, login, dados.preparar_senha(senha))
@@ -460,36 +458,31 @@ def ver_perfil_interativo(conexao, id_usuario: int) -> None:
     pausar()
 
 
-def pede_novo_valor(conexao, opcao: str, id_usuario: int):
+def pede_novo_valor(conexao, opcao: str, id_usuario: int) -> str:
     """
     Pergunta o novo valor do dado escolhido em "Alterar dados".
-    Entrada: conexao (conexão aberta); opcao (str), de 1 a 4 (nome, e-mail,
-             username ou data de nascimento); id_usuario (int).
-    Saida: novo valor (str, ou datetime no caso da data de nascimento).
+    Entrada: conexao (conexão aberta); opcao (str), 1 (nome) ou 2
+             (username); id_usuario (int).
+    Saida: novo valor (str).
     Erro: banco.ErroBanco se uma consulta falhar.
     """
     match opcao:
         case "1":
             return pede_nome_completo()
-        case "2":
-            return pede_email_novo(conexao, id_usuario)
-        case "3":
-            return pede_username_novo(conexao, id_usuario)
         case _:
-            return pede_data_nascimento()
+            return pede_username_novo(conexao, id_usuario)
 
 
 def alterar_dados_interativo(conexao, usuario: dict) -> bool:
     """
-    UPDATE: deixa escolher um dado do perfil (nome, e-mail, username ou data
-    de nascimento), pergunta o novo valor e grava no banco.
+    UPDATE: deixa escolher um dado do perfil (nome ou username), pergunta o novo valor e grava no banco.
     Entrada: conexao (conexão aberta); usuario (dict com id e nome) que tem o
              nome atualizado se o nome mudar; respostas pelo teclado.
     Saida: True se atualizou; False se desistiu ou houve erro.
     """
     opcao = menu_alterar_dados()
 
-    if opcao == "5":
+    if opcao == "3":
         return False
 
     sucesso = False
@@ -501,8 +494,7 @@ def alterar_dados_interativo(conexao, usuario: dict) -> bool:
             perfil[CAMPOS_DO_PERFIL[opcao]] = pede_novo_valor(conexao, opcao, usuario["id"])
 
             sucesso = banco.atualizar_usuario(
-                conexao, usuario["id"], perfil["nome"], perfil["email"],
-                perfil["username"], perfil["nascimento"],
+                conexao, usuario["id"], perfil["nome"], perfil["username"],
             )
 
     except banco.ErroBanco as erro:
@@ -523,11 +515,10 @@ def alterar_dados_interativo(conexao, usuario: dict) -> bool:
 def alterar_senha_interativo(conexao, id_usuario: int) -> bool:
     """
     UPDATE: troca a senha, exigindo a senha atual.
-    Entrada: conexao (conexão aberta); id_usuario (int); senhas pelo teclado
-             (sem aparecer na tela).
+    Entrada: conexao (conexão aberta); id_usuario (int); senhas pelo teclado.
     Saida: True se trocou; False se a senha atual estava errada ou houve erro.
     """
-    senha_atual = getpass.getpass("\nSenha atual: ")
+    senha_atual = input("\nSenha atual: ")
     senha_nova = pede_senha_nova()
     trocou = False
 
@@ -560,7 +551,7 @@ def excluir_conta_interativo(conexao, usuario: dict) -> bool:
     excluida = False
 
     if pergunta_sim_nao("Deseja mesmo excluir a sua conta?"):
-        senha = getpass.getpass("Digite a sua senha para confirmar: ")
+        senha = input("Digite a sua senha para confirmar: ")
 
         try:
             excluida = banco.excluir_usuario(conexao, usuario["id"], dados.preparar_senha(senha))
@@ -693,12 +684,14 @@ def mostra_niveis_impacto(niveis: list[tuple]) -> None:
     """
     borda = "+" + "-" * 4 + "+" + "-" * 7 + "+" + "-" * 6 + "+"
 
+    borda = "+" + "-" * 4 + "+" + "-" * 12 + "+" + "-" * 8 + "+"
+
     print("\n" + borda)
-    print(f"| {'ID':>2} | {'Nível':<5} | {'Peso':>4} |")
+    print(f"| {'ID':>2} | {'Nível':<10} | {'Pontos':>6} |")
     print(borda)
 
     for item in niveis:
-        print(f"| {item[0]:>2} | {item[1]:<5} | {item[2]:>4.2f} |")
+        print(f"| {item[0]:>2} | {item[1]:<10} | {item[2]:>6.2f} |")
 
     print(borda)
 
@@ -715,10 +708,12 @@ def mostra_exemplos_acoes(niveis: list[tuple]) -> None:
 
     print("\nExemplos de ações por nível:")
     print("-" * 50)
-    print("Alto..: Plantar uma árvore, Voluntariado ambiental")
-    print("Médio.: Reduzir uso de plásticos, Economizar água no banho")
-    print("Baixo.: Reciclar papel e vidro, Usar transporte público,")
-    print("        Fazer compostagem em casa")
+    print("Crítico....: Mutirões, recuperação de nascentes,")
+    print("             descarte de resíduos perigosos")
+    print("Estrutural.: Compostagem, energia limpa,")
+    print("             substituição de itens descartáveis")
+    print("Rotina.....: Transporte ativo, economia de água,")
+    print("             consumo consciente")
     print("-" * 50)
 
 
@@ -1188,7 +1183,7 @@ def decide_proximo_passo(ciclo: dict, periodos: list[tuple], limite_total: float
     """
     # Ordem: limite de pontos, fim do período e, por último, próximo dia
     if ciclo["pts_dias"] + ciclo["pts_acoes"] >= limite_total:
-        print("\nLimite de 100 pontos atingido!")
+        print("\nLimite de 1000 pontos atingido!")
         return PASSO_CONCLUIDO
 
     if ciclo["dia"] >= limite_de_dias(periodos, ciclo["periodo"]):
@@ -1749,12 +1744,10 @@ def menu_alterar_dados() -> str:
     print("ALTERAR DADOS")
     print("=" * 50)
     print("1. Nome")
-    print("2. E-mail")
-    print("3. Username")
-    print("4. Data de nascimento")
-    print("5. Voltar")
+    print("2. Username")
+    print("3. Voltar")
 
-    return pede_opcao(("1", "2", "3", "4", "5"))
+    return pede_opcao(("1", "2", "3"))
 
 
 def menu_comunidades() -> str:
