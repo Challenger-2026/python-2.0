@@ -1,8 +1,10 @@
 """
 Ponto de entrada do Sistema de Pontos Ambientais - Lobo-guará Tech.
 
-O sistema abre direto no menu principal. O usuário só é identificado (por
-CPF, no banco) na primeira vez que escolhe uma opção que precisa dele.
+O sistema abre direto no menu de entrada (Entrar, Cadastrar-se ou consultar
+a API pública), como uma rede social. Depois do login, o usuário vê o menu
+principal. Cada menu é uma estrutura match/case que chama a função
+correspondente a cada opção.
 Este módulo só organiza o fluxo entre os menus: o cálculo e a validação
 ficam em dados.py, o acesso ao banco fica em banco.py e a interação com o
 usuário fica em menu.py. A sessão (usuário e comunidade em uso) é um dict
@@ -16,28 +18,46 @@ import dados
 import menu
 
 
-def garante_identificacao(conexao, sessao: dict) -> bool:
+def reinicia_sessao(sessao: dict) -> None:
     """
-    Identifica o usuário se ainda não houver ninguém identificado na sessão.
-    Entrada: conexao (conexão aberta); sessao (dict) que é atualizado.
-    Saida: True se há um usuário identificado; False se ele desistiu.
+    Zera a sessão (ao sair da conta ou excluí-la): esquece o usuário e a
+    comunidade, o progresso salvo e as respostas guardadas.
+    Entrada: sessao (dict) que é atualizado.
+    Saida: não retorna valor.
     """
-    # Só pergunta o CPF se ninguém foi identificado ainda
-    if sessao["usuario"] is None:
-        sessao["usuario"], sessao["id_comunidade"] = menu.identificar_usuario(conexao)
+    sessao["usuario"] = None
+    sessao["id_comunidade"] = None
+    dados.progresso["ativo"] = False
+    dados.respostas_usuario.clear()
 
-    return sessao["usuario"] is not None
+
+def entra_na_conta(conexao, sessao: dict) -> None:
+    """
+    Faz o login e, se der certo, guarda o usuário na sessão.
+    Entrada: conexao (conexão aberta); sessao (dict) que é atualizado.
+    Saida: não retorna valor.
+    """
+    usuario = menu.entrar_interativo(conexao)
+
+    if usuario is not None:
+        # Começa limpo, sem o progresso de quem entrou antes
+        reinicia_sessao(sessao)
+        sessao["usuario"] = usuario
 
 
 def registra_pontos_da_sessao(conexao, sessao: dict) -> None:
     """
-    Abre o fluxo "Registrar pontos" para o usuário da sessão. É o INSERT do
-    sistema: cada ação registrada vira uma postagem no banco. Usada pelo menu
-    principal e pelo submenu "Gerenciar ações".
+    Abre o fluxo "Registrar pontos" para o usuário da sessão. É o INSERT de
+    postagens: cada ação registrada vira uma postagem no banco. Usada pelo
+    menu principal e pelo submenu "Gerenciar ações". Se ainda não houver
+    comunidade escolhida, pergunta qual usar.
     Entrada: conexao (conexão aberta); sessao (dict) com usuario e
              id_comunidade.
     Saida: não retorna valor.
     """
+    if sessao["id_comunidade"] is None:
+        sessao["id_comunidade"] = menu.escolhe_comunidade_do_usuario(conexao, sessao["usuario"])
+
     menu.registrar_pontos(
         conexao,
         sessao["usuario"],
@@ -103,10 +123,66 @@ def executa_menu_relatorios(conexao, usuario: dict, id_comunidade: int | None) -
                 return
 
 
+def executa_menu_comunidades(conexao, sessao: dict) -> None:
+    """
+    Mostra o submenu "Minhas comunidades" até o usuário voltar. Ao sair, a
+    comunidade da sessão é esquecida, porque as comunidades do usuário podem
+    ter mudado (será perguntada de novo em "Registrar pontos").
+    Entrada: conexao (conexão aberta); sessao (dict) que é atualizado.
+    Saida: não retorna valor.
+    """
+    id_usuario = sessao["usuario"]["id"]
+
+    while True:
+        opcao = menu.menu_comunidades()
+
+        match opcao:
+            case "1":
+                menu.listar_minhas_comunidades_interativo(conexao, id_usuario)
+            case "2":
+                menu.entrar_comunidade_interativo(conexao, id_usuario)
+            case "3":
+                menu.sair_comunidade_interativo(conexao, id_usuario)
+            case "4":
+                sessao["id_comunidade"] = None
+                return
+
+
+def executa_menu_conta(conexao, sessao: dict) -> None:
+    """
+    Mostra o submenu "Minha conta" (o CRUD do cadastro) até o usuário voltar
+    ou excluir a conta.
+    Entrada: conexao (conexão aberta); sessao (dict) que é atualizado se a
+             conta for excluída.
+    Saida: não retorna valor.
+    """
+    usuario = sessao["usuario"]
+
+    while True:
+        opcao = menu.menu_conta()
+
+        match opcao:
+            case "1":
+                menu.ver_perfil_interativo(conexao, usuario["id"])
+            case "2":
+                menu.alterar_dados_interativo(conexao, usuario)
+            case "3":
+                menu.alterar_senha_interativo(conexao, usuario["id"])
+            case "4":
+                executa_menu_comunidades(conexao, sessao)
+            case "5":
+                # Conta excluída: não há mais usuário na sessão
+                if menu.excluir_conta_interativo(conexao, usuario):
+                    reinicia_sessao(sessao)
+                    return
+            case "6":
+                return
+
+
 def executa_menu_api() -> None:
     """
     Mostra o submenu "Consultar API pública" até o usuário voltar. Não
-    precisa de usuário identificado, pois consulta dados de toda a plataforma.
+    precisa de usuário na conta, pois consulta dados de toda a plataforma.
     Entrada: não recebe parâmetros.
     Saida: não retorna valor.
     """
@@ -122,73 +198,96 @@ def executa_menu_api() -> None:
                 return
 
 
-def executa_opcao_do_usuario(conexao, sessao: dict, opcao: str) -> None:
+def trata_menu_inicial(conexao, sessao: dict) -> bool:
     """
-    Executa uma opção do menu principal que precisa de usuário identificado.
-    Entrada: conexao (conexão aberta); sessao (dict) com usuario e
-             id_comunidade; opcao (str): "1" registrar, "2" gerenciar ou
-             "3" relatórios.
-    Saida: não retorna valor.
+    Mostra o menu de entrada (ninguém na conta) e executa a opção escolhida.
+    Entrada: conexao (conexão aberta); sessao (dict) que é atualizado no
+             login.
+    Saida: False se o usuário escolheu sair do sistema; True nos demais casos.
     """
-    usuario = sessao["usuario"]
+    opcao = menu.menu_inicial()
 
     match opcao:
+        case "0":
+            return False
+        case "1":
+            entra_na_conta(conexao, sessao)
+        case "2":
+            menu.cadastrar_usuario_interativo(conexao)
+        case "3":
+            executa_menu_api()
+
+    return True
+
+
+def trata_menu_principal(conexao, sessao: dict) -> bool:
+    """
+    Mostra o menu principal (usuário na conta) e executa a opção escolhida.
+    Entrada: conexao (conexão aberta); sessao (dict) com usuario e
+             id_comunidade.
+    Saida: False se o usuário escolheu encerrar o sistema; True nos demais
+           casos (inclusive ao sair da conta).
+    """
+    opcao = menu.menu_principal(sessao["usuario"]["nome"])
+
+    match opcao:
+        case "0":
+            return False
         case "1":
             registra_pontos_da_sessao(conexao, sessao)
         case "2":
             executa_menu_crud(conexao, sessao)
         case "3":
-            executa_menu_relatorios(conexao, usuario, sessao["id_comunidade"])
+            executa_menu_relatorios(conexao, sessao["usuario"], sessao["id_comunidade"])
+        case "4":
+            executa_menu_conta(conexao, sessao)
+        case "5":
+            executa_menu_api()
+        case "6":
+            reinicia_sessao(sessao)
+
+    return True
 
 
-def executa_menu_principal(conexao) -> None:
+def executa_sistema(conexao) -> None:
     """
-    Mostra o menu principal até o usuário sair.
+    Repete o menu de entrada (se ninguém está na conta) ou o menu principal
+    (se alguém entrou) até o usuário sair do sistema.
     Entrada: conexao (conexão aberta).
     Saida: não retorna valor.
     """
     sessao = {"usuario": None, "id_comunidade": None}
+    continuar = True
 
-    while True:
-        nome_usuario = None
+    while continuar:
+        if sessao["usuario"] is None:
+            continuar = trata_menu_inicial(conexao, sessao)
+        else:
+            continuar = trata_menu_principal(conexao, sessao)
 
-        if sessao["usuario"] is not None:
-            nome_usuario = sessao["usuario"]["nome"]
-
-        opcao = menu.menu_principal(nome_usuario)
-
-        if opcao == "0":
-            print("Encerrando o sistema...")
-            return
-
-        # Trocar de usuário: zera a sessão, o progresso e as respostas guardadas
-        if opcao == "4":
-            sessao = {"usuario": None, "id_comunidade": None}
-            dados.progresso["ativo"] = False
-            dados.respostas_usuario.clear()
-            continue
-
-        # A consulta à API não precisa de usuário identificado
-        if opcao == "5":
-            executa_menu_api()
-            continue
-
-        # Opções 1, 2 e 3 só rodam com usuário identificado
-        if garante_identificacao(conexao, sessao):
-            executa_opcao_do_usuario(conexao, sessao, opcao)
+    print("Encerrando o sistema...")
 
 
-def main() -> None:
+def limpa_tela() -> None:
     """
-    Abre a conexão com o banco, executa o sistema e fecha a conexão no fim.
-    Entrada: não recebe parametros; utiliza os menus interativos.
+    Limpa o terminal (cls no Windows, clear nos outros sistemas).
+    Entrada: não recebe parâmetros.
     Saida: não retorna valor.
     """
-    # Limpa o terminal (cls no Windows, clear nos outros sistemas)
     if os.name == "nt":
         os.system("cls")
     else:
         os.system("clear")
+
+
+def iniciar_sistema() -> None:
+    """
+    Abre a conexão com o banco, executa o sistema e fecha a conexão no fim.
+    O sistema começa direto no menu de entrada.
+    Entrada: não recebe parametros; utiliza os menus interativos.
+    Saida: não retorna valor.
+    """
+    limpa_tela()
 
     try:
         conexao = banco.conectar()
@@ -197,7 +296,7 @@ def main() -> None:
         return
 
     try:
-        executa_menu_principal(conexao)
+        executa_sistema(conexao)
     except banco.ErroBanco as erro:
         print(f"\nErro: {erro}")
     except (KeyboardInterrupt, EOFError):
@@ -209,4 +308,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    iniciar_sistema()

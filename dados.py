@@ -7,6 +7,7 @@ dos registros. A interação com o usuário fica em menu.py e o acesso ao banco
 fica em banco.py.
 """
 
+from datetime import datetime
 
 
 # DADOS DO SISTEMA
@@ -47,13 +48,13 @@ LIMITE_ACOES: float = 31.80
 
 # VALIDAÇÃO
 
-def nome_valido(nome: str) -> bool:
+def nome_valido(texto: str) -> bool:
     """
     Verifica se o nome não está vazio.
-    Entrada: nome (str).
+    Entrada: texto (str).
     Saida: True se valido ou False se invalido.
     """
-    return bool(nome.strip())
+    return bool(texto.strip())
 
 
 def cpf_formato_valido(cpf: str) -> bool:
@@ -70,6 +71,93 @@ def cpf_formato_valido(cpf: str) -> bool:
     return len(cpf) == 11 and cpf.isascii() and cpf.isdigit() and cpf != cpf[0] * 11
 
 
+def formata_cpf(cpf: str) -> str:
+    """
+    Coloca pontos e traço no CPF, como ele é guardado no banco.
+    Entrada: cpf (str) com 11 números.
+    Saida: CPF formatado (str), por exemplo 123.456.789-01.
+    """
+    return f"{cpf[0:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:11]}"
+
+
+def nome_completo_valido(texto: str) -> bool:
+    """
+    Verifica se o texto tem nome e sobrenome e cabe no banco (150 letras).
+    Entrada: texto (str).
+    Saida: True se válido ou False se inválido.
+    """
+    texto = texto.strip()
+
+    return len(texto.split()) >= 2 and len(texto) <= 150
+
+
+def email_valido(texto: str) -> bool:
+    """
+    Verifica o formato básico do e-mail: um só @, texto antes dele e um
+    domínio com ponto, sem espaços.
+    Entrada: texto (str).
+    Saida: True se válido ou False se inválido.
+    """
+    texto = texto.strip()
+
+    if " " in texto or len(texto) > 150 or texto.count("@") != 1:
+        return False
+
+    antes, dominio = texto.split("@")
+
+    return len(antes) > 0 and "." in dominio and not dominio.startswith(".") and not dominio.endswith(".")
+
+
+def username_valido(texto: str) -> bool:
+    """
+    Verifica se o username tem de 3 a 50 caracteres, só com letras, números
+    e _ (sem espaços).
+    Entrada: texto (str).
+    Saida: True se válido ou False se inválido.
+    """
+    texto = texto.strip()
+
+    return 3 <= len(texto) <= 50 and texto.isascii() and texto.replace("_", "").isalnum()
+
+
+def senha_valida(texto: str) -> bool:
+    """
+    Verifica se a senha tem de 6 a 150 caracteres e não tem espaços.
+    Entrada: texto (str).
+    Saida: True se válida ou False se inválida.
+    """
+    return 6 <= len(texto) <= 150 and " " not in texto
+
+
+def preparar_senha(senha: str) -> str:
+    """
+    Prepara a senha para ser gravada no banco. Hoje devolve o texto como foi
+    digitado, igual ao que o grupo assumiu da API Java; se a API usar hash,
+    é só trocar este ponto.
+    Entrada: senha (str).
+    Saida: senha (str) pronta para gravar.
+    """
+    return senha
+
+
+def converte_data_nascimento(texto: str) -> datetime | None:
+    """
+    Converte uma data no formato dd/mm/aaaa. Não aceita datas inválidas,
+    futuras ou antes de 1900.
+    Entrada: texto (str), por exemplo "25/12/2005".
+    Saida: datetime da data, ou None se for inválida.
+    """
+    try:
+        data = datetime.strptime(texto.strip(), "%d/%m/%Y")
+    except ValueError:
+        return None
+
+    if data > datetime.now() or data.year < 1900:
+        return None
+
+    return data
+
+
 def inteiro_valido(texto: str) -> bool:
     """
     Verifica se o texto pode ser convertido para inteiro.
@@ -83,26 +171,36 @@ def inteiro_valido(texto: str) -> bool:
         return False
 
 
-def periodo_valido(p: int) -> bool:
+def periodo_valido(numero: int) -> bool:
     """
     Verifica se o período existe.
-    Entrada: p (int), número do período.
+    Entrada: numero (int), número do período.
     Saida: True para 1, 2 ou 3; False para os demais valores.
     """
-    return p in (1, 2, 3)
+    return numero in (1, 2, 3)
 
 
-def nivel_impacto_valido(niveis_impacto: list[tuple], nivel: int) -> bool:
+def buscar_item(lista: list[tuple], numero: int) -> tuple | None:
+    """
+    Procura numa lista de tuplas a que tem o número no início (posição 0).
+    Entrada: lista (list[tuple]); numero (int).
+    Saida: a tupla encontrada, ou None se não existir.
+    """
+    for item in lista:
+        if item[0] == numero:
+            return item
+
+    return None
+
+
+def nivel_impacto_valido(lista: list[tuple], numero: int) -> bool:
     """
     Verifica se o nível de impacto existe.
-    Entrada: niveis_impacto (list[tuple]); nivel (int).
+    Entrada: lista (list[tuple]); numero (int).
     Saida: True se existir ou False caso contrario.
     """
-    for n in niveis_impacto:
-        if n[0] == nivel:
-            return True
+    return buscar_item(lista, numero) is not None
 
-    return False
 
 # CÁLCULO DE PONTOS
 
@@ -120,30 +218,32 @@ def base_diaria(dia: int) -> float:
         return 3.0
 
 
-def peso_do_nivel(niveis_impacto: list[tuple], nivel: int) -> float:
+def peso_do_nivel(lista: list[tuple], numero: int) -> float:
     """
     Busca o peso associado a um nível de impacto.
-    Entrada: niveis_impacto (list[tuple]); nivel (int) existente.
-    Saida: peso (float) ou 0.0 se o nivel nao existir.
+    Entrada: lista (list[tuple]); numero (int) existente.
+    Saida: peso (float) ou 0.0 se o nível não existir.
     """
-    for n in niveis_impacto:
-        if n[0] == nivel:
-            return n[2]
+    item = buscar_item(lista, numero)
 
-    return 0.0
+    if item is None:
+        return 0.0
+
+    return item[2]
 
 
-def nome_do_nivel(niveis_impacto: list[tuple], nivel: int) -> str:
+def nome_do_nivel(lista: list[tuple], numero: int) -> str:
     """
     Busca o nome associado a um nível de impacto.
-    Entrada: niveis_impacto (list[tuple]); nivel (int) existente.
+    Entrada: lista (list[tuple]); numero (int) existente.
     Saida: nome do nível (str), ou string vazia se o nível não existir.
     """
-    for n in niveis_impacto:
-        if n[0] == nivel:
-            return n[1]
+    item = buscar_item(lista, numero)
 
-    return ""
+    if item is None:
+        return ""
+
+    return item[1]
 
 
 def calcula_pontos_dia(
@@ -164,34 +264,34 @@ def calcula_pontos_dia(
              pts_acoes (float), totais acumulados até aqui; limite_total,
              limite_pts_dias e limite_pts_acoes (float), os tetos do
              sistema.
-    Saida: tupla (pontos_do_dia, novo_pts_dias, novo_pts_acoes).
+    Saida: tupla (pontos, novo_dias, novo_acoes).
     """
     # Quanto ainda cabe no limite total
-    restante_total = max(0.0, limite_total - pts_dias - pts_acoes)
+    restante = max(0.0, limite_total - pts_dias - pts_acoes)
 
     # Pontos dos dias: base diária limitada pelo teto dos dias e pelo restante
-    pontos_dias = min(
+    base = min(
         base_diaria(dia),
         max(0.0, limite_pts_dias - pts_dias),
-        restante_total,
+        restante,
     )
 
     # Desconta os pontos dos dias do que ainda cabe
-    restante_total = max(0.0, restante_total - pontos_dias)
+    restante = max(0.0, restante - base)
 
     # Pontos da ação: peso do nível limitado pelo teto das ações e pelo restante
-    pontos_acoes = min(
+    extra = min(
         peso,
         max(0.0, limite_pts_acoes - pts_acoes),
-        restante_total,
+        restante,
     )
 
     # Atualiza os acumulados, arredondando para 2 casas
-    novo_pts_dias = round(pts_dias + pontos_dias, 2)
-    novo_pts_acoes = round(pts_acoes + pontos_acoes, 2)
-    pts_do_dia = round(pontos_dias + pontos_acoes, 2)
+    novo_dias = round(pts_dias + base, 2)
+    novo_acoes = round(pts_acoes + extra, 2)
+    pontos = round(base + extra, 2)
 
-    return pts_do_dia, novo_pts_dias, novo_pts_acoes
+    return pontos, novo_dias, novo_acoes
 
 
 # REGISTROS VINDOS DO BANCO (link, status e pontos)
@@ -208,70 +308,67 @@ def url_valida(url: str) -> bool:
     return url.startswith(("http://", "https://")) and " " not in url and len(url) > 10
 
 
-def filtrar_por_status(lista_registros: list[dict], status: str) -> list[dict]:
+def filtrar_por_campo(lista: list[dict], campo: str, valor) -> list[dict]:
     """
-    Seleciona os registros com o status informado (PENDENTE, APROVADO ou
-    REJEITADO).
-    Entrada: lista_registros (list[dict]); status (str).
+    Seleciona os itens em que o campo tem o valor informado. Serve para
+    qualquer lista de dicts (por status, por comunidade...); textos são
+    comparados sem diferenciar maiúsculas de minúsculas.
+    Entrada: lista (list[dict]); campo (str), chave do dict, como "status";
+             valor, o que procurar.
     Saida: nova lista, podendo estar vazia.
     """
-    registros_filtrados = []
+    resultado = []
 
-    for registro in lista_registros:
-        # Compara em maiúsculas para ignorar diferença de caixa
-        if registro["status"].upper() == status.upper():
-            registros_filtrados.append(registro)
+    for item in lista:
+        if str(item[campo]).upper() == str(valor).upper():
+            resultado.append(item)
 
-    return registros_filtrados
+    return resultado
 
 
-def pega_pontos_registro(registro: dict) -> float:
+def pega_pontos(item: dict) -> float:
     """
-    Obtém os pontos de um registro para ordenar a lista.
-    Entrada: registro (dict).
+    Obtém os pontos de um item (registro ou usuário) para ordenar a lista.
+    Entrada: item (dict) com a chave "pontos".
     Saida: pontos (float).
     """
-    return registro["pontos"]
+    return item["pontos"]
 
 
-def registros_por_pontos(lista_registros: list[dict]) -> list[dict]:
+def ordenar_por_pontos(lista: list[dict]) -> list[dict]:
     """
-    Ordena os registros do maior para o menor número de pontos.
-    Entrada: lista_registros (list[dict]).
+    Ordena do maior para o menor número de pontos. Serve para registros e
+    para usuários (ranking).
+    Entrada: lista (list[dict]) com a chave "pontos".
     Saida: nova lista ordenada, preservando a original.
     """
-    return sorted(lista_registros, key=pega_pontos_registro, reverse=True)
+    return sorted(lista, key=pega_pontos, reverse=True)
 
 
-def pega_pontos_usuario(usuario: dict) -> float:
+def itens_que_faltam(lista: list[dict], outra: list[dict]) -> list[dict]:
     """
-    Obtém os pontos de um usuário para ordenar o ranking.
-    Entrada: usuario (dict) com a chave "pontos".
-    Saida: pontos (float).
-    """
-    return usuario["pontos"]
-
-
-def ranking_de_usuarios(lista_usuarios: list[dict]) -> list[dict]:
-    """
-    Ordena os usuários do maior para o menor saldo de pontos.
-    Entrada: lista_usuarios (list[dict]).
-    Saida: nova lista ordenada, preservando a original.
-    """
-    return sorted(lista_usuarios, key=pega_pontos_usuario, reverse=True)
-
-
-def filtrar_por_comunidade(lista_registros: list[dict], id_comunidade: int) -> list[dict]:
-    """
-    Seleciona as postagens de uma comunidade.
-    Entrada: lista_registros (list[dict]) com a chave "id_comunidade";
-             id_comunidade (int).
+    Seleciona os itens de uma lista que não aparecem em outra (comparando
+    pelo "id").
+    Entrada: lista (list[dict]) e outra (list[dict]), ambas com a chave "id".
     Saida: nova lista, podendo estar vazia.
     """
-    registros_filtrados = []
+    resultado = []
 
-    for registro in lista_registros:
-        if registro["id_comunidade"] == id_comunidade:
-            registros_filtrados.append(registro)
+    for item in lista:
+        if buscar_item_por_id(outra, item["id"]) is None:
+            resultado.append(item)
 
-    return registros_filtrados
+    return resultado
+
+
+def buscar_item_por_id(lista: list[dict], numero: int) -> dict | None:
+    """
+    Procura numa lista de dicts o que tem o "id" informado.
+    Entrada: lista (list[dict]); numero (int).
+    Saida: o dict encontrado, ou None.
+    """
+    for item in lista:
+        if item["id"] == numero:
+            return item
+
+    return None

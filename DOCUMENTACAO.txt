@@ -37,8 +37,8 @@ evidência, que fica PENDENTE até a moderação aprovar ou rejeitar, e
 gera pontos para o usuário.
 
 O programa em Python é um segundo canal de acesso a esses mesmos
-dados: o que é registrado, alterado ou excluído por ele fica gravado no
-mesmo banco usado pela API Java, e o que foi cadastrado pela plataforma
+dados: o que é cadastrado, registrado, alterado ou excluído por ele fica
+gravado no mesmo banco usado pela API Java, e o que foi cadastrado pela plataforma
 (usuários, comunidades e postagens) é lido pelo programa. Os dados são
 relevantes para o projeto porque são exatamente os do desafio: ações
 sustentáveis, pontuação e ranking.
@@ -83,6 +83,9 @@ json, os, datetime e textwrap fazem parte da biblioteca padrão.
 
 Tabelas usadas, as mesmas da API Java: T_LGT_USUARIO,
 T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
+Para testar: faça o cadastro (Cadastrar-se), entre (Entrar) e, em Minha
+conta > Minhas comunidades, entre em uma comunidade para poder
+registrar pontos.
 
 
 ----------------------------------------------------------------
@@ -90,31 +93,86 @@ T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
 ----------------------------------------------------------------
 
 3.1. Abertura
-   O programa abre a conexão com o Oracle e mostra o menu principal.
-   Se o banco não responder ou se faltar o .env, mostra a mensagem de
-   erro e encerra. A conexão é fechada no final, no bloco finally.
+   O programa abre a conexão com o Oracle e começa direto no menu de
+   entrada (nenhuma pergunta é feita antes dele), como uma rede
+   social. Se o banco não responder ou se faltar o .env, mostra a
+   mensagem de erro e encerra. A conexão é fechada no final, no bloco
+   finally. Cada menu é um match/case em main.py que chama a função
+   correspondente a cada opção.
 
-3.2. Identificação
-   O usuário só é identificado na primeira vez que escolhe uma opção
-   que precisa dele (1, 2 ou 3). O sistema pede o CPF (11 números),
-   procura no banco e, se achar, dá boas-vindas. Se o usuário
-   participa de comunidades, escolhe em qual vai registrar. Se o CPF
-   não existe, avisa para se cadastrar pelo site. Digitar 0 volta.
-   O CPF nunca é exibido nas telas.
-
-3.3. Menu principal
+3.2. Menu de entrada (ninguém na conta)
      0. Sair
-     1. Registrar pontos
-     2. Gerenciar ações (submenu do CRUD)
-     3. Relatórios (submenu)
-     4. Trocar de usuário
-     5. Consultar API pública (submenu)
+     1. Entrar
+     2. Cadastrar-se
+     3. Consultar API pública (submenu)
 
-3.4. Opção 1 - Registrar pontos (INSERT)
-   a) Mostra os períodos (1 a 7 dias, 8 a 15 dias, 16 a 30 dias) e
+3.3. Cadastrar-se (CREATE de usuário)
+   Cria um novo usuário na tabela T_LGT_USUARIO, a mesma da API Java.
+   Pergunta, um por vez:
+     CPF (0 volta) -> nome completo (nome e sobrenome) -> e-mail ->
+     username (3 a 50 letras, números ou _) -> data de nascimento
+     (dd/mm/aaaa) -> senha (mínimo 6 caracteres, digitada duas vezes,
+     sem aparecer na tela).
+   CPF, e-mail e username não podem se repetir: o sistema consulta o
+   banco e pede outro valor se já existir (o banco também tem
+   restrição UNIQUE nesses campos). Antes de gravar, mostra um resumo
+   (sem CPF e sem senha) e pede confirmação (s/n).
+   O usuário entra com perfil COMUM, nível 1 e saldo de pontos 0; os
+   perfis CRIADOR e MODERADOR não podem ser escolhidos por aqui. O CPF
+   é gravado com pontos e traço (000.000.000-00), como cabe na coluna
+   de 14 caracteres. Depois do cadastro, o usuário escolhe "Entrar".
+   ATENÇÃO: a senha é gravada e comparada como texto, assumindo que a
+   API Java faz o mesmo. Se a API usar hash (ex.: BCrypt), o grupo
+   deve trocar só a função dados.preparar_senha; senão contas criadas
+   pelo site não conseguem entrar pelo Python e vice-versa.
+
+3.4. Entrar (login)
+   Pede o username ou o e-mail e a senha (sem aparecer na tela), com
+   até 3 tentativas; digitar 0 no login volta. A senha é conferida no
+   próprio SELECT (WHERE ... AND senha = :senha), sem ser lida do
+   banco. Se der certo, dá boas-vindas e abre o menu principal.
+
+3.5. Menu principal (usuário na conta)
+     0. Encerrar o sistema
+     1. Registrar pontos
+     2. Gerenciar ações (submenu do CRUD de postagens)
+     3. Relatórios (submenu)
+     4. Minha conta (submenu do CRUD do cadastro)
+     5. Consultar API pública (submenu)
+     6. Sair da conta (volta ao menu de entrada e limpa a sessão e o
+        progresso)
+
+3.6. Minha conta (CRUD do cadastro do usuário)
+     1. Ver perfil        - nome, e-mail, username, nascimento, perfil,
+                            nível e pontos; sem CPF e sem senha (READ).
+     2. Alterar dados     - escolhe nome, e-mail, username ou data de
+                            nascimento e grava o novo valor; e-mail e
+                            username novos não podem repetir os de
+                            outra pessoa (UPDATE).
+     3. Alterar senha     - exige a senha atual (UPDATE).
+     4. Minhas comunidades (submenu):
+          1. Ver minhas comunidades (READ)
+          2. Entrar em uma comunidade - mostra as que o usuário ainda
+             não participa (CREATE em T_LGT_USUARIO_COMUNIDADE).
+          3. Sair de uma comunidade (DELETE).
+        Só quem participa de uma comunidade pode registrar pontos. A
+        coluna MEMBROS dessa tabela é gravada com 1, valor que ela tem
+        em todas as linhas da base.
+     5. Excluir conta     - pede confirmação (s/n) e a senha (DELETE).
+                            O banco recusa se a conta tiver vínculos
+                            (postagens, comunidades, resgates...);
+                            nesse caso mostra a mensagem de erro e nada
+                            é apagado.
+     6. Voltar
+
+3.7. Registrar pontos (INSERT de postagem)
+   a) Se a comunidade ainda não foi escolhida na sessão, mostra as
+      comunidades do usuário e pede em qual registrar. Sem
+      comunidade, avisa para entrar em uma em Minha conta.
+   b) Mostra os períodos (1 a 7 dias, 8 a 15 dias, 16 a 30 dias) e
       pede o período inicial. Se havia progresso salvo, pergunta se
       continua de onde parou ou recomeça.
-   b) Para cada dia, pergunta se houve ação ambiental:
+   c) Para cada dia, pergunta se houve ação ambiental:
         - Não: o dia vale 0 pontos e não é gravado no banco.
         - Sim: pede o nível de impacto (Alto 1,06 / Médio 0,66 /
           Baixo 0,16), o nome da ação e o link da evidência (precisa
@@ -122,14 +180,14 @@ T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
           respeitando os limites (100 no total, 68 pelos dias e
           31,80 pelas ações) e grava a ação no banco como postagem
           PENDENTE.
-   c) Se o banco recusar o registro, o cálculo do dia é desfeito.
-   d) O ciclo termina ao chegar em 100 pontos ou no dia 30; mostra o
+   d) Se o banco recusar o registro, o cálculo do dia é desfeito.
+   e) O ciclo termina ao chegar em 100 pontos ou no dia 30; mostra o
       resumo final. Se o usuário parar antes, o progresso fica salvo
       para continuar depois.
 
-3.5. Opção 2 - Gerenciar ações (CRUD no banco)
-     1. Inserir   - registra uma ação, no mesmo fluxo da opção 1
-                    (CREATE).
+3.8. Gerenciar ações (CRUD de postagens no banco)
+     1. Inserir   - registra uma ação, no mesmo fluxo de Registrar
+                    pontos (CREATE).
      2. Listar    - mostra as postagens do usuário em uma tabela
                     (READ).
      3. Buscar    - pede o nome exato da ação, sem diferenciar
@@ -146,7 +204,7 @@ T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
    pontos e o link não são editáveis; para mudar, exclui-se e
    registra-se de novo.
 
-3.6. Opção 3 - Relatórios
+3.9. Relatórios
      1. Ver registros - lista as postagens do usuário.
      2. Filtrar por status - mostra só as PENDENTE, APROVADO ou
         REJEITADO.
@@ -161,19 +219,17 @@ T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
    automaticamente), com acentos preservados e indentação. A data da
    exportação aparece no formato dia/mês/ano hora:minuto:segundo.
 
-3.7. Opção 5 - Consultar API pública (consumo de API)
+3.10. Consultar API pública (consumo de API)
      1. Ranking de usuários - faz GET /usuarios e ordena por pontos,
         do maior para o menor.
      2. Postagens de uma comunidade - faz GET /comunidades e GET
         /postagens; o usuário escolhe a comunidade e vê as postagens
         dela.
      3. Voltar
-   Não exige identificação. O Render gratuito pode levar mais de 1
-   minuto para "acordar" na primeira chamada; por isso o tempo limite
-   da requisição é de 120 segundos.
-
-3.8. Opção 4 e 0
-   4 troca de usuário (limpa a sessão e o progresso); 0 encerra.
+   Não exige estar na conta (também aparece no menu de entrada). O
+   Render gratuito pode levar mais de 1 minuto para "acordar" na
+   primeira chamada; por isso o tempo limite da requisição é de 120
+   segundos.
 
 
 ----------------------------------------------------------------
@@ -181,13 +237,47 @@ T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
 ----------------------------------------------------------------
 
 - Menus e submenus de acesso ao CRUD:
-    main.py (executa_menu_principal, executa_menu_crud,
-    executa_menu_relatorios, executa_menu_api) e menu.py (menu_*).
+    main.py (trata_menu_inicial, trata_menu_principal,
+    executa_menu_crud, executa_menu_relatorios, executa_menu_conta,
+    executa_menu_comunidades, executa_menu_api) e menu.py (menu_*).
+    Todos os menus usam match/case e cada case chama a função
+    correspondente.
 
 - Um exemplo de cada operação do CRUD, integrado ao banco:
     banco.py: inserir_postagem (CREATE), listar_postagens e
     buscar_postagens (READ), atualizar_postagem (UPDATE),
     excluir_postagem (DELETE).
+    CRUD do cadastro de usuário (T_LGT_USUARIO), em "Minha conta":
+    banco.py: inserir_usuario (CREATE), buscar_perfil (READ),
+    atualizar_usuario e atualizar_senha (UPDATE), excluir_usuario
+    (DELETE); login em buscar_usuario_por_login. Telas em menu.py
+    (cadastrar_usuario_interativo, entrar_interativo,
+    ver_perfil_interativo, alterar_dados_interativo,
+    alterar_senha_interativo, excluir_conta_interativo).
+    Comunidades do usuário: entrar_na_comunidade, sair_da_comunidade,
+    listar_comunidades_do_usuario.
+
+- Sistema iniciado por um menu, sem pedir dados antes:
+    main.py (iniciar_sistema abre a conexão e chama executa_sistema,
+    que mostra o menu de entrada ou o principal).
+
+- Subalgoritmos com uma única responsabilidade: as funções longas
+  foram divididas. Exemplos: banco.py (consultar e alterar executam o
+  SQL e tratam o erro; as demais só montam o SQL e os dados),
+  menu.py (quebra_texto, mostra_linhas_do_registro e
+  mostra_registros_numerados; grava_acao, monta_resultado,
+  guarda_resposta e registra_dia; escolhe_ciclo e registrar_pontos;
+  pede_opcao, usada por todos os menus; cada campo do cadastro tem a
+  sua função pede_*), main.py (reinicia_sessao, entra_na_conta,
+  trata_menu_inicial, trata_menu_principal e executa_sistema).
+
+- Funções genéricas, com parâmetros de nome genérico, para reaproveitar
+  código: dados.py (filtrar_por_campo serve para qualquer lista de
+  dicionários; ordenar_por_pontos serve para registros e usuários;
+  buscar_item; itens_que_faltam), menu.py (pede_valor_valido recebe a
+  função de validação como parâmetro; escolhe_comunidade serve para
+  qualquer lista de comunidades; mostra_registros_ou_aviso) e banco.py
+  (consultar e alterar).
 
 - Exportação dos dados para JSON:
     exportar.py (monta_exportacao_crud, monta_exportacao_respostas,
@@ -199,8 +289,8 @@ T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
 
 - Funções para organizar, filtrar e ordenar dados em listas de
   dicionários e tuplas:
-    dados.py (filtrar_por_status, registros_por_pontos,
-    ranking_de_usuarios, filtrar_por_comunidade).
+    dados.py (filtrar_por_campo, ordenar_por_pontos, buscar_item,
+    itens_que_faltam).
 
 - Tratamento de erros (try / except / else / finally):
     banco.py (rollback no except, commit no else, cursor.close() no
@@ -215,7 +305,9 @@ T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
 
 - Validação de dados (entrada e processamento):
     dados.py (cpf_formato_valido, url_valida, nome_valido,
-    inteiro_valido, periodo_valido, nivel_impacto_valido) e os
+    inteiro_valido, periodo_valido, nivel_impacto_valido e, do
+    cadastro, nome_completo_valido, email_valido, username_valido,
+    senha_valida e converte_data_nascimento) e os
     "pede_*" de menu.py, que repetem a pergunta até receber um valor
     válido. As consultas ao banco usam parâmetros nomeados (:cpf,
     :id_usuario...), nunca texto concatenado, evitando SQL injection.
@@ -232,8 +324,16 @@ T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
 
    - nome_valido............: texto não pode ser vazio.
    - cpf_formato_valido.....: 11 números, não todos iguais.
+   - formata_cpf............: coloca pontos e traço no CPF.
+   - nome_completo_valido...: nome e sobrenome, até 150 letras.
+   - email_valido...........: formato básico de e-mail.
+   - username_valido........: 3 a 50 letras, números ou _.
+   - senha_valida...........: 6 a 150 caracteres, sem espaços.
+   - preparar_senha.........: prepara a senha para gravar (hoje, texto).
+   - converte_data_nascimento: texto dd/mm/aaaa -> datetime, ou None.
    - inteiro_valido.........: diz se um texto vira inteiro.
    - periodo_valido.........: período é 1, 2 ou 3.
+   - buscar_item............: procura numa lista de tuplas pelo número.
    - nivel_impacto_valido...: o nível de impacto existe.
    - url_valida.............: link começa com http(s):// e não tem
                               espaços.
@@ -241,16 +341,37 @@ T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
    - peso_do_nivel..........: peso de um nível de impacto.
    - nome_do_nivel..........: nome de um nível de impacto.
    - calcula_pontos_dia.....: pontos do dia respeitando os limites.
-   - filtrar_por_status.....: registros com um status.
-   - registros_por_pontos...: ordena do maior para o menor ponto.
-   - ranking_de_usuarios....: ordena usuários por saldo de pontos.
-   - filtrar_por_comunidade.: postagens de uma comunidade.
+   - filtrar_por_campo......: itens de uma lista de dicts em que um
+                              campo tem certo valor (status, id da
+                              comunidade...).
+   - pega_pontos............: pontos de um item (chave de ordenação).
+   - ordenar_por_pontos.....: ordena do maior para o menor ponto
+                              (registros e ranking de usuários).
+   - itens_que_faltam.......: itens de uma lista que não estão em
+                              outra (comparando o id).
+   - buscar_item_por_id.....: procura um dict pelo id.
 
 5.2. banco.py (Oracle - sem print/input)
 
    - carregar_env...........: lê o .env para as variáveis de ambiente.
    - conectar...............: abre a conexão (ErroBanco se falhar).
-   - buscar_usuario_por_cpf.: procura o usuário pelo CPF.
+   - consultar..............: executa um SELECT com tratamento de erro
+                              (usada pelas funções de leitura).
+   - alterar................: executa INSERT/UPDATE/DELETE com commit
+                              no else e rollback no except (usada pelas
+                              funções de escrita).
+   - buscar_usuario_por_login: login por username ou e-mail e senha.
+   - campo_ja_cadastrado....: diz se CPF, e-mail ou username já existe
+                              (ignorando o próprio usuário, se pedido).
+   - inserir_usuario........: CREATE de usuário (perfil COMUM).
+   - buscar_perfil..........: READ do perfil (sem CPF e sem senha).
+   - atualizar_usuario......: UPDATE de nome, e-mail, username e data
+                              de nascimento.
+   - atualizar_senha........: UPDATE da senha (exige a senha atual).
+   - excluir_usuario........: DELETE da conta (exige a senha).
+   - listar_comunidades.....: todas as comunidades.
+   - entrar_na_comunidade...: CREATE da participação do usuário.
+   - sair_da_comunidade.....: DELETE da participação do usuário.
    - listar_comunidades_do_usuario: comunidades em que ele é membro.
    - inserir_postagem.......: CREATE (postagem PENDENTE).
    - listar_postagens.......: READ de todas as postagens do usuário.
@@ -281,30 +402,54 @@ T_LGT_COMUNIDADE, T_LGT_USUARIO_COMUNIDADE e T_LGT_POSTAGEM.
 
 5.5. menu.py (interface - telas, input() e mensagens)
 
-   - pausar, pergunta_sim_nao, pede_numero_da_lista: perguntas
-     reutilizáveis.
-   - identificar_usuario, pede_cpf_valido, pede_usuario_cadastrado,
-     escolhe_comunidade: identificação por CPF.
+   - pausar, pergunta_sim_nao, pede_numero_da_lista, pede_opcao,
+     pede_valor_valido: perguntas reutilizáveis (pede_valor_valido
+     recebe a função de validação como parâmetro).
+   - cadastrar_usuario_interativo e suas auxiliares (pede_cpf_novo,
+     pede_nome_completo, pede_email_novo, pede_username_novo,
+     pede_data_nascimento, pede_senha_nova, pede_dados_do_cadastro,
+     mostra_resumo_do_cadastro, grava_cadastro): cadastro de usuário.
+   - entrar_interativo: login por username/e-mail e senha.
+   - ver_perfil_interativo, alterar_dados_interativo,
+     alterar_senha_interativo, excluir_conta_interativo: CRUD da conta
+     (mostra_perfil, pede_novo_valor).
+   - listar_minhas_comunidades_interativo,
+     entrar_comunidade_interativo, sair_comunidade_interativo e
+     escolhe_comunidade / escolhe_comunidade_ou_aviso /
+     escolhe_comunidade_do_usuario: comunidades do usuário.
    - mostra_*: tabelas com borda (períodos, níveis, registros). A
-     tabela de registros usa textwrap para quebrar ações longas sem
-     desalinhar a borda.
-   - registrar_pontos e suas auxiliares (inicia_novo_ciclo,
-     retoma_ciclo, registra_dia, decide_proximo_passo...): fluxo de
-     registro dia a dia.
+     tabela de registros usa quebra_texto (textwrap) para quebrar ações
+     longas sem desalinhar a borda; mostra_registros_ou_aviso mostra a
+     tabela ou uma mensagem quando a lista está vazia.
+   - registrar_pontos e suas auxiliares (escolhe_ciclo,
+     inicia_novo_ciclo, retoma_ciclo, registra_dia,
+     registra_dia_com_acao, grava_acao, monta_resultado,
+     guarda_resposta, decide_proximo_passo...): fluxo de registro dia
+     a dia.
    - *_registro_interativo: listar, buscar, atualizar e excluir.
    - relatorio_*_interativo e exportar_*_interativo: relatórios e JSON.
    - ranking_api_interativo e postagens_da_comunidade_api_interativo:
      telas da API.
-   - menu_principal, menu_crud, menu_relatorios, menu_api: menus.
+   - menu_inicial, menu_principal, menu_conta, menu_alterar_dados,
+     menu_comunidades, menu_crud, menu_relatorios, menu_api: menus.
 
 5.6. main.py (orquestração)
 
-   - main...................: abre a conexão, roda o sistema e fecha a
-                              conexão no finally.
-   - executa_menu_principal.: loop do menu principal e da sessão.
-   - executa_menu_crud / executa_menu_relatorios / executa_menu_api:
-     loops dos submenus.
-   - garante_identificacao..: identifica o usuário quando necessário.
+   - iniciar_sistema........: abre a conexão, roda o sistema e fecha a
+                              conexão no finally. É chamada no final do
+                              arquivo, dentro do if __name__ == "__main__".
+   - executa_sistema........: repete o menu de entrada ou o principal
+                              até o usuário sair do sistema.
+   - trata_menu_inicial.....: match/case do menu de entrada.
+   - trata_menu_principal...: match/case do menu principal.
+   - entra_na_conta.........: faz o login e guarda o usuário na sessão.
+   - reinicia_sessao........: zera usuário, progresso e respostas.
+   - limpa_tela.............: limpa o terminal ao abrir.
+   - registra_pontos_da_sessao: abre "Registrar pontos", escolhendo a
+                              comunidade se ainda não houver.
+   - executa_menu_crud / executa_menu_relatorios / executa_menu_conta /
+     executa_menu_comunidades / executa_menu_api: loops dos submenus,
+     cada um com match/case.
 
 
 ----------------------------------------------------------------

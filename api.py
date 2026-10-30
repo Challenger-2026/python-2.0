@@ -64,23 +64,23 @@ def listar_usuarios_api() -> list[dict]:
     Saida: lista de dicts com id, nome, username, pontos e perfil.
     Erro: ErroApi se a consulta falhar.
     """
-    usuarios_da_api = buscar_json("/usuarios")
-    usuarios = []
+    dados = buscar_json("/usuarios")
+    lista = []
 
     try:
         # Converte os campos em camelCase da API para os nomes usados no sistema
-        for usuario in usuarios_da_api:
-            usuarios.append({
-                "id": usuario["id"],
-                "nome": usuario["nmCompleto"],
-                "username": usuario["username"],
-                "pontos": float(usuario["sdPonto"]),
-                "perfil": usuario["tipoPerfil"],
+        for item in dados:
+            lista.append({
+                "id": item["id"],
+                "nome": item["nmCompleto"],
+                "username": item["username"],
+                "pontos": float(item["sdPonto"]),
+                "perfil": item["tipoPerfil"],
             })
     except (KeyError, TypeError, ValueError):
         raise ErroApi("Os usuários vieram da API em formato inesperado.")
 
-    return usuarios
+    return lista
 
 
 def listar_comunidades_api() -> list[dict]:
@@ -90,21 +90,21 @@ def listar_comunidades_api() -> list[dict]:
     Saida: lista de dicts com id, nome e descricao.
     Erro: ErroApi se a consulta falhar.
     """
-    comunidades_da_api = buscar_json("/comunidades")
-    comunidades = []
+    dados = buscar_json("/comunidades")
+    lista = []
 
     try:
         # Converte os campos da API para os nomes usados no sistema
-        for comunidade in comunidades_da_api:
-            comunidades.append({
-                "id": comunidade["id"],
-                "nome": comunidade["nmComunidade"],
-                "descricao": comunidade["descricao"],
+        for item in dados:
+            lista.append({
+                "id": item["id"],
+                "nome": item["nmComunidade"],
+                "descricao": item["descricao"],
             })
     except (KeyError, TypeError):
         raise ErroApi("As comunidades vieram da API em formato inesperado.")
 
-    return comunidades
+    return lista
 
 
 def listar_postagens_api() -> list[dict]:
@@ -116,22 +116,22 @@ def listar_postagens_api() -> list[dict]:
            id_comunidade.
     Erro: ErroApi se a consulta falhar.
     """
-    postagens_da_api = buscar_json("/postagens")
-    postagens = []
+    dados = buscar_json("/postagens")
+    lista = []
 
     try:
         # Converte os campos da API para os nomes usados no sistema
-        for postagem in postagens_da_api:
-            postagens.append({
-                "id": postagem["id"],
-                "acao": postagem["ctTexto"],
-                "url": postagem["ctUrl"],
-                "status": postagem["stValidacao"],
-                "pontos": float(postagem["ptGerado"]),
-                "id_usuario": postagem["idUsuario"],
-                "id_comunidade": postagem["idComunidade"],
+        for item in dados:
+            lista.append({
+                "id": item["id"],
+                "acao": item["ctTexto"],
+                "url": item["ctUrl"],
+                "status": item["stValidacao"],
+                "pontos": float(item["ptGerado"]),
+                "id_usuario": item["idUsuario"],
+                "id_comunidade": item["idComunidade"],
             })
     except (KeyError, TypeError, ValueError):
         raise ErroApi("As postagens vieram da API em formato inesperado.")
 
-    return postagens
+    return lista

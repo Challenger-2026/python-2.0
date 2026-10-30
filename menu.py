@@ -10,6 +10,7 @@ as funções "pede_*" fazem uma pergunta, as "mostra_*" imprimem algo e
 as "*_interativo" juntam essas peças em uma tela completa.
 """
 
+import getpass
 import textwrap
 
 import api
@@ -52,6 +53,40 @@ def pergunta_sim_nao(pergunta: str) -> bool:
     return resposta == "s"
 
 
+def pede_opcao(validas: tuple) -> str:
+    """
+    Pede a opção de um menu e repete até receber uma das válidas.
+    Entrada: validas (tuple) com as opções aceitas, como ("0", "1", "2").
+    Saida: opção (str) válida.
+    """
+    opcao = input("\nOpção: ").strip()
+
+    while opcao not in validas:
+        print("Opção inválida.")
+        opcao = input("Opção: ").strip()
+
+    return opcao
+
+
+def pede_valor_valido(pergunta: str, valida, mensagem_erro: str) -> str:
+    """
+    Faz uma pergunta e repete até a resposta passar na função de validação.
+    Serve para qualquer texto (nome, link, busca...): quem chama diz qual
+    validação usar.
+    Entrada: pergunta (str), sem os dois-pontos; valida (função) que recebe o
+             texto e devolve True ou False, como dados.nome_valido;
+             mensagem_erro (str) mostrada quando a resposta é recusada.
+    Saida: resposta (str), sem espaços nas pontas.
+    """
+    resposta = input(f"\n{pergunta}: ").strip()
+
+    while not valida(resposta):
+        print(mensagem_erro)
+        resposta = input(f"{pergunta}: ").strip()
+
+    return resposta
+
+
 def pede_numero_da_lista(pergunta: str, quantidade: int) -> int:
     """
     Pede a posição de um item numa lista mostrada na tela (1, 2, 3...) e
@@ -70,7 +105,7 @@ def pede_numero_da_lista(pergunta: str, quantidade: int) -> int:
 
 
 # ---------------------------------------------------------------------------
-# IDENTIFICAÇÃO DO USUÁRIO
+# CPF
 # ---------------------------------------------------------------------------
 
 def pede_cpf_valido() -> str:
@@ -92,77 +127,550 @@ def pede_cpf_valido() -> str:
     return cpf
 
 
-def pede_usuario_cadastrado(conexao) -> dict | None:
+def escolhe_comunidade(lista: list[dict], titulo: str, pergunta: str) -> int:
     """
-    Pede o CPF até encontrar um usuário cadastrado no banco.
-    Entrada: conexao (conexão aberta); CPF pelo teclado.
-    Saida: dict com id e nome do usuário, ou None se ele desistiu (digitou 0).
+    Mostra comunidades numeradas e pede uma delas. Serve para qualquer lista
+    de comunidades (do usuário, da API, as que faltam entrar...).
+    Entrada: lista (list[dict]) com id e nome, não vazia; titulo (str)
+             mostrado acima da lista; pergunta (str) feita ao usuário.
+    Saida: id (int) da comunidade escolhida.
+    """
+    print(f"\n{titulo}")
+
+    for numero, item in enumerate(lista, start=1):
+        print(f"{numero}. {item['nome']}")
+
+    escolha = pede_numero_da_lista(pergunta, len(lista))
+
+    return lista[escolha - 1]["id"]
+
+
+def escolhe_comunidade_ou_aviso(lista: list[dict], titulo: str, pergunta: str, aviso: str) -> int | None:
+    """
+    Pede uma comunidade da lista ou, se ela estiver vazia, mostra um aviso.
+    Entrada: lista (list[dict]); titulo, pergunta e aviso (str).
+    Saida: id (int) da comunidade escolhida, ou None se a lista está vazia.
+    """
+    if not lista:
+        print(f"\n{aviso}")
+        return None
+
+    return escolhe_comunidade(lista, titulo, pergunta)
+
+
+def escolhe_comunidade_do_usuario(conexao, usuario: dict) -> int | None:
+    """
+    Pede em qual das comunidades do usuário ele quer registrar as ações.
+    Entrada: conexao (conexão aberta); usuario (dict com id); resposta pelo
+             teclado.
+    Saida: id (int) da comunidade, ou None se ele não participa de nenhuma
+           (ou se a consulta falhou).
+    """
+    try:
+        lista = banco.listar_comunidades_do_usuario(conexao, usuario["id"])
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+        return None
+
+    if not lista:
+        return None
+
+    return escolhe_comunidade(lista, "Suas comunidades:", "Em qual comunidade registrar?")
+
+
+# CADASTRO DE USUÁRIO
+
+def pede_cpf_novo(conexao) -> str:
+    """
+    Pede o CPF até receber um válido que ainda não esteja cadastrado.
+    Entrada: conexao (conexão aberta); CPF pelo teclado (0 para desistir).
+    Saida: CPF (str) com 11 números, ou string vazia se o usuário desistiu.
+    Erro: banco.ErroBanco se a consulta falhar.
     """
     while True:
         cpf = pede_cpf_valido()
 
         if not cpf:
+            return ""
+
+        if not banco.campo_ja_cadastrado(conexao, "cpf", cpf):
+            return cpf
+
+        print("Esse CPF já está cadastrado. Use outra opção do menu para entrar.")
+
+
+def pede_nome_completo() -> str:
+    """
+    Pede o nome completo até receber nome e sobrenome.
+    Entrada: nome pelo teclado.
+    Saida: nome completo (str).
+    """
+    return pede_valor_valido(
+        "Nome completo", dados.nome_completo_valido, "Digite nome e sobrenome (até 150 letras).",
+    )
+
+
+def pede_email_novo(conexao, id_usuario: int = 0) -> str:
+    """
+    Pede o e-mail até receber um válido que ainda não esteja cadastrado.
+    Entrada: conexao (conexão aberta); id_usuario (int), usuário que pode
+             manter o próprio e-mail (0 no cadastro novo); e-mail pelo
+             teclado.
+    Saida: e-mail (str).
+    Erro: banco.ErroBanco se a consulta falhar.
+    """
+    while True:
+        email = input("\nE-mail: ").strip()
+
+        if not dados.email_valido(email):
+            print("E-mail inválido. Exemplo: nome@dominio.com")
+        elif banco.campo_ja_cadastrado(conexao, "email", email, id_usuario):
+            print("Esse e-mail já está cadastrado.")
+        else:
+            return email
+
+
+def pede_username_novo(conexao, id_usuario: int = 0) -> str:
+    """
+    Pede o username até receber um válido que ainda não esteja cadastrado.
+    Entrada: conexao (conexão aberta); id_usuario (int), usuário que pode
+             manter o próprio username (0 no cadastro novo); username pelo
+             teclado.
+    Saida: username (str).
+    Erro: banco.ErroBanco se a consulta falhar.
+    """
+    while True:
+        username = input("\nUsername: ").strip()
+
+        if not dados.username_valido(username):
+            print("Username inválido: use de 3 a 50 letras, números ou _ (sem espaços).")
+        elif banco.campo_ja_cadastrado(conexao, "username", username, id_usuario):
+            print("Esse username já está cadastrado.")
+        else:
+            return username
+
+
+def pede_data_nascimento():
+    """
+    Pede a data de nascimento até receber uma data real.
+    Entrada: data pelo teclado, no formato dd/mm/aaaa.
+    Saida: datetime da data informada.
+    """
+    texto = input("\nData de nascimento (dd/mm/aaaa): ")
+    data = dados.converte_data_nascimento(texto)
+
+    while data is None:
+        print("Data inválida. Exemplo: 25/12/2005")
+        texto = input("Data de nascimento (dd/mm/aaaa): ")
+        data = dados.converte_data_nascimento(texto)
+
+    return data
+
+
+def pede_senha_nova() -> str:
+    """
+    Pede a senha duas vezes (sem mostrar na tela) até as duas coincidirem.
+    Entrada: senha pelo teclado.
+    Saida: senha (str).
+    """
+    while True:
+        senha = getpass.getpass("\nSenha (mínimo 6 caracteres, sem espaços): ")
+
+        if not dados.senha_valida(senha):
+            print("Senha inválida.")
+        elif senha != getpass.getpass("Repita a senha: "):
+            print("As senhas não conferem.")
+        else:
+            return senha
+
+
+def pede_dados_do_cadastro(conexao) -> dict | None:
+    """
+    Pergunta, um por vez, todos os dados do novo usuário.
+    Entrada: conexao (conexão aberta); respostas pelo teclado.
+    Saida: dict com cpf, nome, email, username, nascimento e senha; ou None
+           se o usuário desistiu no CPF.
+    Erro: banco.ErroBanco se uma consulta falhar.
+    """
+    cpf = pede_cpf_novo(conexao)
+
+    if not cpf:
+        return None
+
+    nome = pede_nome_completo()
+    email = pede_email_novo(conexao)
+    username = pede_username_novo(conexao)
+    nascimento = pede_data_nascimento()
+    senha = pede_senha_nova()
+
+    return {
+        "cpf": cpf,
+        "nome": nome,
+        "email": email,
+        "username": username,
+        "nascimento": nascimento,
+        "senha": senha,
+    }
+
+
+def mostra_resumo_do_cadastro(cadastro: dict) -> None:
+    """
+    Mostra os dados digitados para o usuário conferir. O CPF e a senha não
+    aparecem na tela.
+    Entrada: cadastro (dict) de pede_dados_do_cadastro.
+    Saida: não retorna valor; imprime o resumo.
+    """
+    print("\n" + "-" * 50)
+    print(f"Nome.......: {cadastro['nome']}")
+    print(f"E-mail.....: {cadastro['email']}")
+    print(f"Username...: {cadastro['username']}")
+    print(f"Nascimento.: {cadastro['nascimento'].strftime('%d/%m/%Y')}")
+    print("-" * 50)
+
+
+def grava_cadastro(conexao, cadastro: dict) -> None:
+    """
+    Grava o cadastro no banco (CPF com pontos e traço, senha preparada).
+    Entrada: conexao (conexão aberta); cadastro (dict).
+    Saida: não retorna valor.
+    Erro: banco.ErroBanco se o banco recusar.
+    """
+    banco.inserir_usuario(
+        conexao,
+        cadastro["nome"],
+        dados.formata_cpf(cadastro["cpf"]),
+        cadastro["email"],
+        cadastro["username"],
+        dados.preparar_senha(cadastro["senha"]),
+        cadastro["nascimento"],
+    )
+
+
+def cadastrar_usuario_interativo(conexao) -> bool:
+    """
+    Tela de cadastro: pergunta os dados, mostra o resumo, pede confirmação e
+    grava o novo usuário (perfil COMUM, nível 1, saldo 0).
+    Entrada: conexao (conexão aberta); dados pelo teclado.
+    Saida: True se cadastrou; False se desistiu, cancelou ou houve erro.
+    """
+    print("\n=== CADASTRO DE USUÁRIO ===")
+
+    sucesso = False
+    confirmou = False
+
+    try:
+        cadastro = pede_dados_do_cadastro(conexao)
+
+        if cadastro is not None:
+            mostra_resumo_do_cadastro(cadastro)
+            confirmou = pergunta_sim_nao("Confirma o cadastro?")
+
+        if confirmou:
+            grava_cadastro(conexao, cadastro)
+
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+
+    else:
+        if confirmou:
+            print("\nCadastro realizado! Escolha \"Entrar\" no menu para acessar sua conta.")
+            sucesso = True
+        else:
+            print("\nCadastro cancelado.")
+
+    pausar()
+    return sucesso
+
+
+
+# LOGIN E CONTA DO USUÁRIO (CRUD DO CADASTRO)
+
+# Campo do perfil escolhido em "Alterar dados" -> chave do dict do perfil
+CAMPOS_DO_PERFIL: dict = {"1": "nome", "2": "email", "3": "username", "4": "nascimento"}
+
+TENTATIVAS_DE_LOGIN: int = 3
+
+
+def entrar_interativo(conexao) -> dict | None:
+    """
+    Tela de login: pede username (ou e-mail) e senha, com até 3 tentativas.
+    Entrada: conexao (conexão aberta); login e senha pelo teclado (0 no login
+             volta ao menu).
+    Saida: dict com id e nome do usuário, ou None se ele desistiu, errou as
+           3 vezes ou houve erro no banco.
+    """
+    print("\n=== ENTRAR ===")
+
+    for tentativa in range(1, TENTATIVAS_DE_LOGIN + 1):
+        login = input("\nUsername ou e-mail (0 para voltar): ").strip()
+
+        if login == "0":
             return None
 
-        usuario = banco.buscar_usuario_por_cpf(conexao, cpf)
+        senha = getpass.getpass("Senha: ")
+
+        try:
+            usuario = banco.buscar_usuario_por_login(conexao, login, dados.preparar_senha(senha))
+        except banco.ErroBanco as erro:
+            print(f"\nErro: {erro}")
+            return None
 
         if usuario is not None:
+            print(f"\nOlá, {usuario['nome']}!")
             return usuario
 
-        print("CPF não cadastrado. Cadastre-se pelo site e tente de novo.")
+        print(f"Username/e-mail ou senha incorretos (tentativa {tentativa} de {TENTATIVAS_DE_LOGIN}).")
+
+    return None
 
 
-def escolhe_comunidade(comunidades: list[dict]) -> int:
+def mostra_perfil(perfil: dict) -> None:
     """
-    Mostra as comunidades do usuário e pede em qual ele quer registrar.
-    Entrada: comunidades (list[dict]) com id e nome, não vazia.
-    Saida: id (int) da comunidade escolhida.
+    Mostra os dados do perfil. O CPF e a senha não aparecem na tela.
+    Entrada: perfil (dict) de banco.buscar_perfil.
+    Saida: não retorna valor; imprime o perfil.
     """
-    print("\nSuas comunidades:")
+    print("\n" + "-" * 50)
+    print(f"Nome.......: {perfil['nome']}")
+    print(f"E-mail.....: {perfil['email']}")
+    print(f"Username...: {perfil['username']}")
+    print(f"Nascimento.: {perfil['nascimento'].strftime('%d/%m/%Y')}")
+    print(f"Perfil.....: {perfil['perfil']}")
+    print(f"Nível......: {perfil['nivel']}")
+    print(f"Pontos.....: {perfil['pontos']:.2f}")
+    print("-" * 50)
 
-    for numero, comunidade in enumerate(comunidades, start=1):
-        print(f"{numero}. {comunidade['nome']}")
 
-    numero_escolhido = pede_numero_da_lista("Em qual comunidade registrar?", len(comunidades))
-
-    return comunidades[numero_escolhido - 1]["id"]
-
-
-def identificar_usuario(conexao) -> tuple[dict | None, int | None]:
+def ver_perfil_interativo(conexao, id_usuario: int) -> None:
     """
-    Identifica o usuário pelo CPF e, se ele participar de comunidades, pede
-    em qual quer registrar as ações. Só é chamada quando o usuário escolhe
-    no menu uma opção que precisa de identificação.
-    Entrada: conexao (conexão aberta); CPF e comunidade pelo teclado.
-    Saida: tupla (usuario, id_comunidade). usuario é dict com id e nome (ou
-           None se desistiu); id_comunidade é None se ele não tem comunidade.
+    READ: mostra o perfil do usuário que está na conta.
+    Entrada: conexao (conexão aberta); id_usuario (int).
+    Saida: não retorna valor; exibe o perfil.
     """
-    print("\n=== IDENTIFICAÇÃO ===")
+    try:
+        perfil = banco.buscar_perfil(conexao, id_usuario)
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+    else:
+        if perfil is None:
+            print("\nPerfil não encontrado.")
+        else:
+            mostra_perfil(perfil)
 
-    usuario = pede_usuario_cadastrado(conexao)
+    pausar()
 
-    if usuario is None:
-        return None, None
 
-    print(f"\nOlá, {usuario['nome']}!")
+def pede_novo_valor(conexao, opcao: str, id_usuario: int):
+    """
+    Pergunta o novo valor do dado escolhido em "Alterar dados".
+    Entrada: conexao (conexão aberta); opcao (str), de 1 a 4 (nome, e-mail,
+             username ou data de nascimento); id_usuario (int).
+    Saida: novo valor (str, ou datetime no caso da data de nascimento).
+    Erro: banco.ErroBanco se uma consulta falhar.
+    """
+    match opcao:
+        case "1":
+            return pede_nome_completo()
+        case "2":
+            return pede_email_novo(conexao, id_usuario)
+        case "3":
+            return pede_username_novo(conexao, id_usuario)
+        case _:
+            return pede_data_nascimento()
 
-    comunidades = banco.listar_comunidades_do_usuario(conexao, usuario["id"])
 
-    if not comunidades:
-        print("Você ainda não participa de nenhuma comunidade; entre em uma pelo site para registrar ações.")
-        return usuario, None
+def alterar_dados_interativo(conexao, usuario: dict) -> bool:
+    """
+    UPDATE: deixa escolher um dado do perfil (nome, e-mail, username ou data
+    de nascimento), pergunta o novo valor e grava no banco.
+    Entrada: conexao (conexão aberta); usuario (dict com id e nome) que tem o
+             nome atualizado se o nome mudar; respostas pelo teclado.
+    Saida: True se atualizou; False se desistiu ou houve erro.
+    """
+    opcao = menu_alterar_dados()
 
-    return usuario, escolhe_comunidade(comunidades)
+    if opcao == "5":
+        return False
+
+    sucesso = False
+
+    try:
+        perfil = banco.buscar_perfil(conexao, usuario["id"])
+
+        if perfil is not None:
+            perfil[CAMPOS_DO_PERFIL[opcao]] = pede_novo_valor(conexao, opcao, usuario["id"])
+
+            sucesso = banco.atualizar_usuario(
+                conexao, usuario["id"], perfil["nome"], perfil["email"],
+                perfil["username"], perfil["nascimento"],
+            )
+
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+
+    else:
+        if sucesso:
+            # Mantém o nome mostrado no menu igual ao do banco
+            usuario["nome"] = perfil["nome"]
+            print("\nDados atualizados!")
+        else:
+            print("\nNão foi possível atualizar: perfil não encontrado.")
+
+    pausar()
+    return sucesso
+
+
+def alterar_senha_interativo(conexao, id_usuario: int) -> bool:
+    """
+    UPDATE: troca a senha, exigindo a senha atual.
+    Entrada: conexao (conexão aberta); id_usuario (int); senhas pelo teclado
+             (sem aparecer na tela).
+    Saida: True se trocou; False se a senha atual estava errada ou houve erro.
+    """
+    senha_atual = getpass.getpass("\nSenha atual: ")
+    senha_nova = pede_senha_nova()
+    trocou = False
+
+    try:
+        trocou = banco.atualizar_senha(
+            conexao, id_usuario, dados.preparar_senha(senha_atual), dados.preparar_senha(senha_nova),
+        )
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+    else:
+        if trocou:
+            print("\nSenha alterada!")
+        else:
+            print("\nSenha atual incorreta.")
+
+    pausar()
+    return trocou
+
+
+def excluir_conta_interativo(conexao, usuario: dict) -> bool:
+    """
+    DELETE: exclui a conta do usuário, depois de uma confirmação e da senha.
+    Entrada: conexao (conexão aberta); usuario (dict com id); confirmação e
+             senha pelo teclado.
+    Saida: True se a conta foi excluída; False se cancelou, errou a senha ou
+           o banco recusou (conta com vínculos).
+    """
+    print("\nATENÇÃO: excluir a conta apaga o seu perfil e não pode ser desfeito.")
+
+    excluida = False
+
+    if pergunta_sim_nao("Deseja mesmo excluir a sua conta?"):
+        senha = getpass.getpass("Digite a sua senha para confirmar: ")
+
+        try:
+            excluida = banco.excluir_usuario(conexao, usuario["id"], dados.preparar_senha(senha))
+        except banco.ErroBanco as erro:
+            print(f"\nErro: {erro}")
+        else:
+            if excluida:
+                print("\nConta excluída. Até logo!")
+            else:
+                print("\nSenha incorreta. A conta não foi excluída.")
+    else:
+        print("\nExclusão cancelada.")
+
+    pausar()
+    return excluida
+
+
+def listar_minhas_comunidades_interativo(conexao, id_usuario: int) -> None:
+    """
+    READ: mostra as comunidades de que o usuário participa.
+    Entrada: conexao (conexão aberta); id_usuario (int).
+    Saida: não retorna valor; imprime a lista.
+    """
+    try:
+        lista = banco.listar_comunidades_do_usuario(conexao, id_usuario)
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+    else:
+        if not lista:
+            print("\nVocê ainda não participa de nenhuma comunidade.")
+        else:
+            print("\nSuas comunidades:")
+
+            for item in lista:
+                print(f"- {item['nome']}")
+
+    pausar()
+
+
+def entrar_comunidade_interativo(conexao, id_usuario: int) -> bool:
+    """
+    CREATE: mostra as comunidades em que o usuário ainda não está e o coloca
+    na escolhida. Só quem participa de uma comunidade pode registrar pontos.
+    Entrada: conexao (conexão aberta); id_usuario (int); escolha pelo teclado.
+    Saida: True se entrou; False se não havia o que escolher ou houve erro.
+    """
+    entrou = False
+
+    try:
+        todas = banco.listar_comunidades(conexao)
+        minhas = banco.listar_comunidades_do_usuario(conexao, id_usuario)
+
+        id_comunidade = escolhe_comunidade_ou_aviso(
+            dados.itens_que_faltam(todas, minhas),
+            "Comunidades disponíveis:", "Em qual comunidade entrar?",
+            "Você já participa de todas as comunidades.",
+        )
+
+        if id_comunidade is not None:
+            banco.entrar_na_comunidade(conexao, id_usuario, id_comunidade)
+            entrou = True
+
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+
+    else:
+        if entrou:
+            print("\nVocê entrou na comunidade!")
+
+    pausar()
+    return entrou
+
+
+def sair_comunidade_interativo(conexao, id_usuario: int) -> bool:
+    """
+    DELETE: mostra as comunidades do usuário e o tira da escolhida.
+    Entrada: conexao (conexão aberta); id_usuario (int); escolha pelo teclado.
+    Saida: True se saiu; False se não havia o que escolher ou houve erro.
+    """
+    saiu = False
+
+    try:
+        id_comunidade = escolhe_comunidade_ou_aviso(
+            banco.listar_comunidades_do_usuario(conexao, id_usuario),
+            "Suas comunidades:", "De qual comunidade sair?",
+            "Você ainda não participa de nenhuma comunidade.",
+        )
+
+        if id_comunidade is not None:
+            saiu = banco.sair_da_comunidade(conexao, id_usuario, id_comunidade)
+
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+
+    else:
+        if saiu:
+            print("\nVocê saiu da comunidade.")
+
+    pausar()
+    return saiu
 
 
 
 # TABELAS NA TELA
 
 
-def mostra_periodos(lista_periodos: list[tuple]) -> None:
+def mostra_periodos(periodos: list[tuple]) -> None:
     """
     Exibe a tabela de períodos.
-    Entrada: lista_periodos (list[tuple]).
+    Entrada: periodos (list[tuple]).
     Saida: não retorna valor; imprime a tabela.
     """
     borda = "+" + "-" * 4 + "+" + "-" * 14 + "+" + "-" * 18 + "+" + "-" * 11 + "+"
@@ -171,16 +679,16 @@ def mostra_periodos(lista_periodos: list[tuple]) -> None:
     print(f"| {'ID':>2} | {'Dias':<12} | {'Pontos/dia':<16} | {'Total':<9} |")
     print(borda)
 
-    for p in lista_periodos:
-        print(f"| {p[0]:>2} | {p[1]:<12} | {p[2]:<16} | {p[3]:<9} |")
+    for item in periodos:
+        print(f"| {item[0]:>2} | {item[1]:<12} | {item[2]:<16} | {item[3]:<9} |")
 
     print(borda)
 
 
-def mostra_niveis_impacto(niveis_impacto: list[tuple]) -> None:
+def mostra_niveis_impacto(niveis: list[tuple]) -> None:
     """
     Exibe a tabela de níveis de impacto.
-    Entrada: niveis_impacto (list[tuple]).
+    Entrada: niveis (list[tuple]).
     Saida: não retorna valor; imprime a tabela.
     """
     borda = "+" + "-" * 4 + "+" + "-" * 7 + "+" + "-" * 6 + "+"
@@ -189,21 +697,21 @@ def mostra_niveis_impacto(niveis_impacto: list[tuple]) -> None:
     print(f"| {'ID':>2} | {'Nível':<5} | {'Peso':>4} |")
     print(borda)
 
-    for n in niveis_impacto:
-        print(f"| {n[0]:>2} | {n[1]:<5} | {n[2]:>4.2f} |")
+    for item in niveis:
+        print(f"| {item[0]:>2} | {item[1]:<5} | {item[2]:>4.2f} |")
 
     print(borda)
 
 
-def mostra_exemplos_acoes(niveis_impacto: list[tuple]) -> None:
+def mostra_exemplos_acoes(niveis: list[tuple]) -> None:
     """
     Mostra a tabela de níveis de impacto e sugestões de ações ambientais
     agrupadas por nível, pra ilustrar o que pode ser informado no dia.
-    Entrada: niveis_impacto (list[tuple]).
+    Entrada: niveis (list[tuple]).
     Saida: não retorna valor; imprime a tabela e as sugestões, que são
            só ilustrativas.
     """
-    mostra_niveis_impacto(niveis_impacto)
+    mostra_niveis_impacto(niveis)
 
     print("\nExemplos de ações por nível:")
     print("-" * 50)
@@ -228,15 +736,51 @@ def mostra_registro(registro: dict) -> None:
     print("-" * 50)
 
 
-def mostra_registros_numerados(lista_registros: list[dict]) -> None:
+def quebra_texto(texto: str | None, largura: int) -> list[str]:
+    """
+    Quebra um texto em linhas de até "largura" letras, por palavra inteira
+    (igual ao "Wrap Text" do Excel).
+    Entrada: texto (str, ou None); largura (int).
+    Saida: lista com pelo menos uma linha (vazia se o texto for vazio).
+    """
+    if texto is None:
+        texto = ""
+
+    linhas = textwrap.wrap(texto, largura)
+
+    if not linhas:
+        linhas = [""]
+
+    return linhas
+
+
+def mostra_linhas_do_registro(posicao: int, registro: dict, largura: int) -> None:
+    """
+    Imprime um registro dentro da tabela numerada. Ação longa ocupa mais de
+    uma linha; só a primeira mostra o número, o status e os pontos.
+    Entrada: posicao (int); registro (dict); largura (int) da coluna Ação.
+    Saida: não retorna valor; imprime as linhas.
+    """
+    linhas = quebra_texto(registro["acao"], largura)
+
+    for indice, linha in enumerate(linhas):
+        if indice == 0:
+            print(
+                f"| {posicao:>3} | {linha:<{largura}} | "
+                f"{registro['status']:<10} | {registro['pontos']:>6.2f} |"
+            )
+        else:
+            print(f"| {'':>3} | {linha:<{largura}} | {'':<10} | {'':>6} |")
+
+
+def mostra_registros_numerados(lista: list[dict]) -> None:
     """
     Exibe uma tabela com os registros, numerados pela posição (1, 2, 3...)
-    para permitir escolher um deles. Ação longa quebra em mais linhas dentro
-    da mesma borda, por palavra inteira (igual ao "Wrap Text" do Excel).
-    Entrada: lista_registros (list[dict]).
+    para permitir escolher um deles.
+    Entrada: lista (list[dict]).
     Saida: não retorna valor; imprime a tabela numerada.
     """
-    largura_acao = 30
+    largura = 30
 
     borda = "+" + "-" * 5 + "+" + "-" * 32 + "+" + "-" * 12 + "+" + "-" * 8 + "+"
 
@@ -244,29 +788,21 @@ def mostra_registros_numerados(lista_registros: list[dict]) -> None:
     print(f"| {'Nº':>3} | {'Ação':<30} | {'Status':<10} | {'Pontos':>6} |")
     print(borda)
 
-    for posicao, registro in enumerate(lista_registros, start=1):
-        # Quebra ações longas em várias linhas sem estourar a borda da tabela
-        texto_da_acao = registro["acao"]
-
-        if texto_da_acao is None:
-            texto_da_acao = ""
-
-        linhas_da_acao = textwrap.wrap(texto_da_acao, largura_acao)
-
-        if not linhas_da_acao:
-            linhas_da_acao = [""]
-
-        for indice, linha_da_acao in enumerate(linhas_da_acao):
-            # Só a primeira linha mostra status e pontos
-            if indice == 0:
-                print(
-                    f"| {posicao:>3} | {linha_da_acao:<{largura_acao}} | "
-                    f"{registro['status']:<10} | {registro['pontos']:>6.2f} |"
-                )
-            else:
-                print(f"| {'':>3} | {linha_da_acao:<{largura_acao}} | {'':<10} | {'':>6} |")
-
+    for posicao, registro in enumerate(lista, start=1):
+        mostra_linhas_do_registro(posicao, registro, largura)
         print(borda)
+
+
+def mostra_registros_ou_aviso(lista: list[dict], aviso: str) -> None:
+    """
+    Mostra a tabela numerada ou, se a lista estiver vazia, uma mensagem.
+    Entrada: lista (list[dict]); aviso (str) mostrado quando não há registros.
+    Saida: não retorna valor.
+    """
+    if lista:
+        mostra_registros_numerados(lista)
+    else:
+        print(aviso)
 
 
 
@@ -276,23 +812,23 @@ def mostra_registros_numerados(lista_registros: list[dict]) -> None:
 # no mesmo formato do dict "progresso" de dados.py, usado para retomar.
 
 
-def limite_de_dias(lista_periodos: list[tuple], periodo: int) -> int:
+def limite_de_dias(periodos: list[tuple], periodo: int) -> int:
     """
     Busca o último dia de um período.
-    Entrada: lista_periodos (list[tuple]); periodo (int), de 1 a 3.
+    Entrada: periodos (list[tuple]); periodo (int), de 1 a 3.
     Saida: último dia do período (int).
     """
     # A posição 4 da tupla é o último dia do período
-    return lista_periodos[periodo - 1][4]
+    return periodos[periodo - 1][4]
 
 
-def pede_periodo_inicial(lista_periodos: list[tuple]) -> int:
+def pede_periodo_inicial(periodos: list[tuple]) -> int:
     """
     Mostra os períodos e pede em qual começar.
-    Entrada: lista_periodos (list[tuple]); período pelo teclado.
+    Entrada: periodos (list[tuple]); período pelo teclado.
     Saida: número do período escolhido (int), de 1 a 3.
     """
-    mostra_periodos(lista_periodos)
+    mostra_periodos(periodos)
 
     entrada = input("\nPeríodo inicial (1, 2 ou 3): ").strip()
 
@@ -303,13 +839,13 @@ def pede_periodo_inicial(lista_periodos: list[tuple]) -> int:
     return int(entrada)
 
 
-def inicia_novo_ciclo(lista_periodos: list[tuple]) -> dict:
+def inicia_novo_ciclo(periodos: list[tuple]) -> dict:
     """
     Cria um ciclo do zero, no período e dia 1 escolhidos pelo usuário.
-    Entrada: lista_periodos (list[tuple]).
+    Entrada: periodos (list[tuple]).
     Saida: ciclo (dict) novo, sem pontos e sem dias registrados.
     """
-    periodo = pede_periodo_inicial(lista_periodos)
+    periodo = pede_periodo_inicial(periodos)
 
     return {
         "periodo": periodo,
@@ -376,15 +912,15 @@ def pergunta_continuar_ou_recomecar(progresso: dict) -> bool:
 
 # REGISTRO DE PONTOS: perguntas sobre a ação do dia
 
-def pede_nivel_impacto(niveis_impacto: list[tuple]) -> int:
+def pede_nivel_impacto(niveis: list[tuple]) -> int:
     """
     Pede o nível de impacto da ação até receber um que exista.
-    Entrada: niveis_impacto (list[tuple]); nível pelo teclado.
+    Entrada: niveis (list[tuple]); nível pelo teclado.
     Saida: id do nível escolhido (int).
     """
     entrada = input("\nNível de impacto da ação (1, 2 ou 3): ").strip()
 
-    while not dados.inteiro_valido(entrada) or not dados.nivel_impacto_valido(niveis_impacto, int(entrada)):
+    while not dados.inteiro_valido(entrada) or not dados.nivel_impacto_valido(niveis, int(entrada)):
         print("Nível de impacto inválido.")
         entrada = input("Nível de impacto da ação (1, 2 ou 3): ").strip()
 
@@ -397,13 +933,7 @@ def pede_nome_da_acao() -> str:
     Entrada: nome pelo teclado.
     Saida: nome da ação (str).
     """
-    acao = input("\nAção realizada no dia: ").strip()
-
-    while not dados.nome_valido(acao):
-        print("Ação inválida.")
-        acao = input("Ação realizada no dia: ").strip()
-
-    return acao
+    return pede_valor_valido("Ação realizada no dia", dados.nome_valido, "Ação inválida.")
 
 
 def pede_link_evidencia() -> str:
@@ -412,31 +942,25 @@ def pede_link_evidencia() -> str:
     Entrada: link pelo teclado.
     Saida: link (str) começando com http:// ou https://.
     """
-    url = input("\nLink da evidência (começa com http): ").strip()
-
-    while not dados.url_valida(url):
-        print("Link inválido.")
-        url = input("Link da evidência (começa com http): ").strip()
-
-    return url
+    return pede_valor_valido("Link da evidência (começa com http)", dados.url_valida, "Link inválido.")
 
 
-def pede_dados_da_acao(niveis_impacto: list[tuple]) -> dict:
+def pede_dados_da_acao(niveis: list[tuple]) -> dict:
     """
     Mostra os níveis e exemplos e pergunta tudo sobre a ação do dia: nível
     de impacto, nome e link da evidência.
-    Entrada: niveis_impacto (list[tuple]); respostas pelo teclado.
+    Entrada: niveis (list[tuple]); respostas pelo teclado.
     Saida: dict com nivel (nome), peso, acao e url.
     """
-    mostra_exemplos_acoes(niveis_impacto)
+    mostra_exemplos_acoes(niveis)
 
-    nivel = pede_nivel_impacto(niveis_impacto)
+    nivel = pede_nivel_impacto(niveis)
     acao = pede_nome_da_acao()
     url = pede_link_evidencia()
 
     return {
-        "nivel": dados.nome_do_nivel(niveis_impacto, nivel),
-        "peso": dados.peso_do_nivel(niveis_impacto, nivel),
+        "nivel": dados.nome_do_nivel(niveis, nivel),
+        "peso": dados.peso_do_nivel(niveis, nivel),
         "acao": acao,
         "url": url,
     }
@@ -473,12 +997,45 @@ def mostra_resultado_do_dia(resultado: dict, ciclo: dict, limite_total: float) -
     print("=" * 50)
 
 
+def grava_acao(conexao, info: dict, pontos: float, usuario: dict, id_comunidade: int) -> bool:
+    """
+    Grava a ação no banco como postagem PENDENTE e avisa se o banco recusar.
+    Entrada: conexao (conexão aberta); info (dict com acao e url); pontos
+             (float); usuario (dict); id_comunidade (int).
+    Saida: True se gravou; False se o banco recusou.
+    """
+    try:
+        banco.inserir_postagem(
+            conexao, info["acao"], info["url"], pontos, usuario["id"], id_comunidade,
+        )
+    except banco.ErroBanco as erro:
+        print(f"\nErro: {erro}")
+        return False
+
+    return True
+
+
+def monta_resultado(info: dict, pontos: float) -> dict:
+    """
+    Junta os dados da ação com os pontos do dia.
+    Entrada: info (dict com acao, url, nivel e peso); pontos (float).
+    Saida: resultado (dict com acao, url, nivel, peso e pontos).
+    """
+    return {
+        "acao": info["acao"],
+        "url": info["url"],
+        "nivel": info["nivel"],
+        "peso": info["peso"],
+        "pontos": pontos,
+    }
+
+
 def registra_dia_com_acao(
     conexao,
     usuario: dict,
     id_comunidade: int,
     ciclo: dict,
-    niveis_impacto: list[tuple],
+    niveis: list[tuple],
     limites: tuple[float, float, float],
 ) -> dict | None:
     """
@@ -486,7 +1043,7 @@ def registra_dia_com_acao(
     os pontos e grava a ação no banco. Se o banco recusar, desfaz o cálculo
     dos pontos do dia.
     Entrada: conexao (conexão aberta); usuario (dict); id_comunidade (int);
-             ciclo (dict) que é atualizado com os pontos; niveis_impacto
+             ciclo (dict) que é atualizado com os pontos; niveis
              (list[tuple]); limites (tuple) com limite_total, limite_pts_dias
              e limite_pts_acoes.
     Saida: resultado (dict com acao, nivel, peso e pontos), ou None se o
@@ -494,36 +1051,51 @@ def registra_dia_com_acao(
     """
     limite_total, limite_pts_dias, limite_pts_acoes = limites
 
-    dados_da_acao = pede_dados_da_acao(niveis_impacto)
+    info = pede_dados_da_acao(niveis)
 
     # Guarda os acumulados para desfazer se o banco recusar o registro
-    pts_dias_antes = ciclo["pts_dias"]
-    pts_acoes_antes = ciclo["pts_acoes"]
+    dias_antes = ciclo["pts_dias"]
+    acoes_antes = ciclo["pts_acoes"]
 
-    pontos_do_dia, ciclo["pts_dias"], ciclo["pts_acoes"] = dados.calcula_pontos_dia(
-        ciclo["dia"], dados_da_acao["peso"], pts_dias_antes, pts_acoes_antes,
+    pontos, ciclo["pts_dias"], ciclo["pts_acoes"] = dados.calcula_pontos_dia(
+        ciclo["dia"], info["peso"], dias_antes, acoes_antes,
         limite_total, limite_pts_dias, limite_pts_acoes,
     )
 
-    try:
-        banco.inserir_postagem(
-            conexao, dados_da_acao["acao"], dados_da_acao["url"],
-            pontos_do_dia, usuario["id"], id_comunidade,
-        )
-    except banco.ErroBanco as erro:
-        print(f"\nErro: {erro}")
+    if not grava_acao(conexao, info, pontos, usuario, id_comunidade):
         # Restaura os pontos de antes do dia
-        ciclo["pts_dias"] = pts_dias_antes
-        ciclo["pts_acoes"] = pts_acoes_antes
+        ciclo["pts_dias"] = dias_antes
+        ciclo["pts_acoes"] = acoes_antes
         return None
 
-    return {
-        "acao": dados_da_acao["acao"],
-        "url": dados_da_acao["url"],
-        "nivel": dados_da_acao["nivel"],
-        "peso": dados_da_acao["peso"],
-        "pontos": pontos_do_dia,
-    }
+    return monta_resultado(info, pontos)
+
+
+def resultado_sem_acao() -> dict:
+    """
+    Cria o resultado de um dia em que não houve ação: vale 0 pontos.
+    Entrada: não recebe parâmetros.
+    Saida: resultado (dict com acao, url, nivel, peso e pontos).
+    """
+    return {"acao": "Nenhuma ação", "url": "", "nivel": "Nenhuma", "peso": 0.0, "pontos": 0.0}
+
+
+def guarda_resposta(ciclo: dict, fez_acao: bool, resultado: dict) -> None:
+    """
+    Guarda a resposta do dia para a exportação em JSON.
+    Entrada: ciclo (dict) com periodo e dia; fez_acao (bool); resultado (dict).
+    Saida: não retorna valor; acrescenta em dados.respostas_usuario.
+    """
+    dados.respostas_usuario.append({
+        "periodo": ciclo["periodo"],
+        "dia": ciclo["dia"],
+        "fez_acao": fez_acao,
+        "acao": resultado["acao"],
+        "nivel": resultado["nivel"],
+        "peso": resultado["peso"],
+        "url": resultado["url"],
+        "pontos": round(resultado["pontos"], 2),
+    })
 
 
 def registra_dia(
@@ -531,7 +1103,7 @@ def registra_dia(
     usuario: dict,
     id_comunidade: int,
     ciclo: dict,
-    niveis_impacto: list[tuple],
+    niveis: list[tuple],
     limites: tuple[float, float, float],
 ) -> bool:
     """
@@ -545,26 +1117,14 @@ def registra_dia(
     fez_acao = pergunta_sim_nao("Fez alguma ação ambiental nesse dia?")
 
     if fez_acao:
-        resultado = registra_dia_com_acao(conexao, usuario, id_comunidade, ciclo, niveis_impacto, limites)
+        resultado = registra_dia_com_acao(conexao, usuario, id_comunidade, ciclo, niveis, limites)
 
         if resultado is None:
             return False
     else:
-        # Dia sem ação: vale 0 pontos e não vai para o banco
-        resultado = {"acao": "Nenhuma ação", "url": "", "nivel": "Nenhuma", "peso": 0.0, "pontos": 0.0}
+        resultado = resultado_sem_acao()
 
-    # Guarda a resposta do dia para a exportação em JSON
-    dados.respostas_usuario.append({
-        "periodo": ciclo["periodo"],
-        "dia": ciclo["dia"],
-        "fez_acao": fez_acao,
-        "acao": resultado["acao"],
-        "nivel": resultado["nivel"],
-        "peso": resultado["peso"],
-        "url": resultado["url"],
-        "pontos": round(resultado["pontos"], 2),
-    })
-
+    guarda_resposta(ciclo, fez_acao, resultado)
     ciclo["dias_registrados"] += 1
     mostra_resultado_do_dia(resultado, ciclo, limites[0])
 
@@ -591,11 +1151,11 @@ def decide_proximo_dia(ciclo: dict) -> str:
     return PASSO_PARAR
 
 
-def decide_fim_do_periodo(ciclo: dict, lista_periodos: list[tuple]) -> str:
+def decide_fim_do_periodo(ciclo: dict, periodos: list[tuple]) -> str:
     """
     Trata o último dia de um período: conclui o ciclo se era o período 3, ou
     pergunta se o usuário quer ir para o período seguinte.
-    Entrada: ciclo (dict) que é atualizado; lista_periodos (list[tuple]);
+    Entrada: ciclo (dict) que é atualizado; periodos (list[tuple]);
              resposta pelo teclado.
     Saida: PASSO_CONCLUIDO, PASSO_SEGUIR (foi para o próximo período) ou
            PASSO_PARAR (preferiu parar).
@@ -606,7 +1166,7 @@ def decide_fim_do_periodo(ciclo: dict, lista_periodos: list[tuple]) -> str:
 
     proximo_periodo = ciclo["periodo"] + 1
 
-    print(f"\nCompletou o período {ciclo['periodo']} ({limite_de_dias(lista_periodos, ciclo['periodo'])} dias).")
+    print(f"\nCompletou o período {ciclo['periodo']} ({limite_de_dias(periodos, ciclo['periodo'])} dias).")
 
     if not pergunta_sim_nao(f"Ir para o período {proximo_periodo}?"):
         return PASSO_PARAR
@@ -619,11 +1179,11 @@ def decide_fim_do_periodo(ciclo: dict, lista_periodos: list[tuple]) -> str:
     return PASSO_SEGUIR
 
 
-def decide_proximo_passo(ciclo: dict, lista_periodos: list[tuple], limite_total: float) -> str:
+def decide_proximo_passo(ciclo: dict, periodos: list[tuple], limite_total: float) -> str:
     """
     Decide o que fazer depois de registrar um dia: concluir se atingiu o
     limite de pontos, tratar o fim do período, ou perguntar pelo próximo dia.
-    Entrada: ciclo (dict); lista_periodos (list[tuple]); limite_total (float).
+    Entrada: ciclo (dict); periodos (list[tuple]); limite_total (float).
     Saida: PASSO_SEGUIR, PASSO_PARAR ou PASSO_CONCLUIDO.
     """
     # Ordem: limite de pontos, fim do período e, por último, próximo dia
@@ -631,8 +1191,8 @@ def decide_proximo_passo(ciclo: dict, lista_periodos: list[tuple], limite_total:
         print("\nLimite de 100 pontos atingido!")
         return PASSO_CONCLUIDO
 
-    if ciclo["dia"] >= limite_de_dias(lista_periodos, ciclo["periodo"]):
-        return decide_fim_do_periodo(ciclo, lista_periodos)
+    if ciclo["dia"] >= limite_de_dias(periodos, ciclo["periodo"]):
+        return decide_fim_do_periodo(ciclo, periodos)
 
     return decide_proximo_dia(ciclo)
 
@@ -642,24 +1202,24 @@ def executa_ciclo(
     usuario: dict,
     id_comunidade: int,
     ciclo: dict,
-    lista_periodos: list[tuple],
-    niveis_impacto: list[tuple],
+    periodos: list[tuple],
+    niveis: list[tuple],
     limites: tuple[float, float, float],
 ) -> bool:
     """
     Registra dia após dia até o ciclo terminar ou o usuário parar.
     Entrada: conexao (conexão aberta); usuario (dict); id_comunidade (int);
-             ciclo (dict) que é atualizado; lista_periodos e niveis_impacto
+             ciclo (dict) que é atualizado; periodos e niveis
              (list[tuple]); limites (tuple) com limite_total, limite_pts_dias
              e limite_pts_acoes.
     Saida: True se o ciclo foi concluído (limite de pontos ou 30 dias);
            False se o usuário parou no meio ou o banco recusou um registro.
     """
     while True:
-        if not registra_dia(conexao, usuario, id_comunidade, ciclo, niveis_impacto, limites):
+        if not registra_dia(conexao, usuario, id_comunidade, ciclo, niveis, limites):
             return False
 
-        passo = decide_proximo_passo(ciclo, lista_periodos, limites[0])
+        passo = decide_proximo_passo(ciclo, periodos, limites[0])
 
         if passo == PASSO_CONCLUIDO:
             return True
@@ -676,19 +1236,19 @@ def mostra_resumo_final(usuario: dict, ciclo: dict, limites: tuple[float, float,
     Saida: não retorna valor; imprime o resumo.
     """
     limite_total, limite_pts_dias, limite_pts_acoes = limites
-    periodos_usados = ""
+    texto = ""
 
-    for p in ciclo["periodos_usados"]:
-        if periodos_usados:
-            periodos_usados += ", "
+    for item in ciclo["periodos_usados"]:
+        if texto:
+            texto += ", "
 
-        periodos_usados += str(p)
+        texto += str(item)
 
     print("\n" + "=" * 50)
     print("RESUMO FINAL")
     print("=" * 50)
     print(f"Usuário.......: {usuario['nome']}")
-    print(f"Períodos......: {periodos_usados}")
+    print(f"Períodos......: {texto}")
     print(f"Dias..........: {ciclo['dias_registrados']}")
     print(f"Pontos dias...: {ciclo['pts_dias']:.2f} (limite {limite_pts_dias:.2f})")
     print(f"Pontos ações..: {ciclo['pts_acoes']:.2f} (limite {limite_pts_acoes:.2f})")
@@ -696,54 +1256,57 @@ def mostra_resumo_final(usuario: dict, ciclo: dict, limites: tuple[float, float,
     print("=" * 50)
 
 
+def escolhe_ciclo(periodos: list[tuple], progresso: dict) -> dict:
+    """
+    Decide com qual ciclo trabalhar: continua o progresso salvo (se existir e
+    o usuário quiser) ou começa um ciclo novo, limpando as respostas antigas.
+    Entrada: periodos (list[tuple]); progresso (dict); resposta pelo teclado.
+    Saida: ciclo (dict) pronto para executar.
+    """
+    if progresso["ativo"] and pergunta_continuar_ou_recomecar(progresso):
+        return retoma_ciclo(progresso)
+
+    dados.respostas_usuario.clear()
+
+    return inicia_novo_ciclo(periodos)
+
+
 def registrar_pontos(
     conexao,
     usuario: dict,
     id_comunidade: int | None,
-    lista_periodos: list[tuple],
-    niveis_impacto: list[tuple],
+    periodos: list[tuple],
+    niveis: list[tuple],
     progresso: dict,
     limite_total: float,
     limite_pts_dias: float,
     limite_pts_acoes: float,
 ) -> None:
     """
-    Conduz o registro de pontos ambientais: escolhe se continua o progresso
-    salvo ou começa um ciclo novo, registra os dias, mostra o resumo e, se o
-    ciclo terminou de verdade, oferece começar outro na hora. As ações feitas
-    são gravadas no banco como postagens PENDENTES.
+    Conduz o registro de pontos ambientais: escolhe o ciclo, registra os
+    dias, mostra o resumo e, se o ciclo terminou de verdade, oferece começar
+    outro na hora. As ações feitas são gravadas no banco como postagens
+    PENDENTES.
     Entrada: conexao (conexão aberta com o banco); usuario (dict com id e
              nome); id_comunidade (int, ou None se o usuário não tiver
-             comunidade); lista_periodos, niveis_impacto e progresso
-             (listas/dict de dados); limite_total, limite_pts_dias e
-             limite_pts_acoes (float), os tetos do sistema.
+             comunidade); periodos, niveis e progresso (listas/dict de
+             dados); limite_total, limite_pts_dias e limite_pts_acoes
+             (float), os tetos do sistema.
     Saida: não retorna valor; grava as ações no banco e atualiza progresso.
     """
     print("\n=== REGISTRO DE PONTOS AMBIENTAIS ===")
 
     if id_comunidade is None:
         print("\nVocê precisa participar de uma comunidade para registrar ações.")
+        print("Entre em uma em: Minha conta > Minhas comunidades.")
         pausar()
         return
 
     limites = (limite_total, limite_pts_dias, limite_pts_acoes)
-    # Só pergunta se continua quando há progresso salvo
-    continuar_de_onde_parou = False
-
-    if progresso["ativo"]:
-        continuar_de_onde_parou = pergunta_continuar_ou_recomecar(progresso)
 
     while True:
-        if continuar_de_onde_parou:
-            ciclo = retoma_ciclo(progresso)
-        else:
-            ciclo = inicia_novo_ciclo(lista_periodos)
-            dados.respostas_usuario.clear()
-
-        # Nas próximas voltas do loop, os ciclos começam do zero
-        continuar_de_onde_parou = False
-
-        concluido = executa_ciclo(conexao, usuario, id_comunidade, ciclo, lista_periodos, niveis_impacto, limites)
+        ciclo = escolhe_ciclo(periodos, progresso)
+        concluido = executa_ciclo(conexao, usuario, id_comunidade, ciclo, periodos, niveis, limites)
 
         mostra_resumo_final(usuario, ciclo, limites)
         pausar()
@@ -767,13 +1330,7 @@ def pede_nome_para_busca() -> str:
     Entrada: nome pelo teclado.
     Saida: nome (str).
     """
-    nome_da_acao = input("\nBuscar ação (nome exato): ").strip()
-
-    while not dados.nome_valido(nome_da_acao):
-        print("Digite um nome para buscar.")
-        nome_da_acao = input("Buscar ação (nome exato): ").strip()
-
-    return nome_da_acao
+    return pede_valor_valido("Buscar ação (nome exato)", dados.nome_valido, "Digite um nome para buscar.")
 
 
 def pede_novo_nome() -> str:
@@ -782,13 +1339,7 @@ def pede_novo_nome() -> str:
     Entrada: nome pelo teclado.
     Saida: novo nome (str).
     """
-    novo_nome = input("\nNovo nome da ação: ").strip()
-
-    while not dados.nome_valido(novo_nome):
-        print("Nome inválido.")
-        novo_nome = input("Novo nome da ação: ").strip()
-
-    return novo_nome
+    return pede_valor_valido("Novo nome da ação", dados.nome_valido, "Nome inválido.")
 
 
 def escolhe_registro(conexao, id_usuario: int, verbo: str) -> dict:
@@ -823,10 +1374,7 @@ def listar_registros_interativo(conexao, id_usuario: int) -> None:
     except banco.ErroBanco as erro:
         print(f"\nErro: {erro}")
     else:
-        if registros:
-            mostra_registros_numerados(registros)
-        else:
-            print("\nNenhum registro ainda.")
+        mostra_registros_ou_aviso(registros, "\nNenhum registro ainda.")
 
     pausar()
 
@@ -837,19 +1385,47 @@ def buscar_registro_interativo(conexao, id_usuario: int) -> None:
     Entrada: conexao (conexão aberta); id_usuario (int); nome pelo teclado.
     Saida: não retorna valor; imprime os registros encontrados.
     """
-    nome_da_acao = pede_nome_para_busca()
+    nome = pede_nome_para_busca()
 
     try:
-        encontrados = banco.buscar_postagens(conexao, id_usuario, nome_da_acao)
+        lista = banco.buscar_postagens(conexao, id_usuario, nome)
     except banco.ErroBanco as erro:
         print(f"\nErro: {erro}")
     else:
-        if encontrados:
-            mostra_registros_numerados(encontrados)
-        else:
-            print("Nada encontrado.")
+        mostra_registros_ou_aviso(lista, "Nada encontrado.")
 
     pausar()
+
+
+def avisa_resultado_da_atualizacao(alterado: bool) -> bool:
+    """
+    Avisa se a atualização funcionou.
+    Entrada: alterado (bool) devolvido pelo banco.
+    Saida: o mesmo valor de alterado.
+    """
+    if alterado:
+        print("Registro atualizado!")
+    else:
+        print("Não foi possível atualizar: só registros PENDENTES podem ser alterados.")
+
+    return alterado
+
+
+def avisa_resultado_da_exclusao(confirmou: bool, excluido: bool) -> bool:
+    """
+    Avisa se a exclusão funcionou, foi cancelada ou foi recusada.
+    Entrada: confirmou (bool), se o usuário confirmou; excluido (bool)
+             devolvido pelo banco.
+    Saida: True se o registro foi excluído.
+    """
+    if not confirmou:
+        print("Exclusão cancelada.")
+    elif excluido:
+        print("Registro excluído!")
+    else:
+        print("Não foi possível excluir: só registros PENDENTES podem ser excluídos.")
+
+    return confirmou and excluido
 
 
 def atualizar_registro_interativo(conexao, id_usuario: int) -> bool:
@@ -868,24 +1444,36 @@ def atualizar_registro_interativo(conexao, id_usuario: int) -> bool:
 
         mostra_registro(registro)
 
-        novo_nome = pede_novo_nome()
-        foi_atualizado = banco.atualizar_postagem(conexao, registro["id"], id_usuario, novo_nome)
+        nome = pede_novo_nome()
+        alterado = banco.atualizar_postagem(conexao, registro["id"], id_usuario, nome)
 
     except (ValueError, banco.ErroBanco) as erro:
         print(f"\nErro: {erro}")
 
     else:
-        if foi_atualizado:
-            print("Registro atualizado!")
-            sucesso = True
-        else:
-            print("Não foi possível atualizar: só registros PENDENTES podem ser alterados.")
+        sucesso = avisa_resultado_da_atualizacao(alterado)
 
     finally:
         print("Fim da tentativa de atualização.")
 
     pausar()
     return sucesso
+
+
+def confirma_e_exclui(conexao, registro: dict, id_usuario: int) -> tuple[bool, bool]:
+    """
+    Pede a confirmação e só exclui no banco se o usuário confirmar.
+    Entrada: conexao (conexão aberta); registro (dict); id_usuario (int).
+    Saida: tupla (confirmou, excluido), dois bool.
+    Erro: banco.ErroBanco se o banco recusar.
+    """
+    confirmou = pergunta_sim_nao("Confirma exclusão?")
+    excluido = False
+
+    if confirmou:
+        excluido = banco.excluir_postagem(conexao, registro["id"], id_usuario)
+
+    return confirmou, excluido
 
 
 def excluir_registro_interativo(conexao, id_usuario: int) -> bool:
@@ -898,7 +1486,6 @@ def excluir_registro_interativo(conexao, id_usuario: int) -> bool:
            excluído.
     """
     sucesso = False
-    confirmou = False
 
     # Mesmo esquema de try/except/else/finally do atualizar
     try:
@@ -906,24 +1493,13 @@ def excluir_registro_interativo(conexao, id_usuario: int) -> bool:
 
         mostra_registro(registro)
 
-        confirmou = pergunta_sim_nao("Confirma exclusão?")
-        # Só exclui no banco se o usuário confirmou
-        foi_excluido = False
-
-        if confirmou:
-            foi_excluido = banco.excluir_postagem(conexao, registro["id"], id_usuario)
+        confirmou, excluido = confirma_e_exclui(conexao, registro, id_usuario)
 
     except (ValueError, banco.ErroBanco) as erro:
         print(f"\nErro: {erro}")
 
     else:
-        if not confirmou:
-            print("Exclusão cancelada.")
-        elif foi_excluido:
-            print("Registro excluído!")
-            sucesso = True
-        else:
-            print("Não foi possível excluir: só registros PENDENTES podem ser excluídos.")
+        sucesso = avisa_resultado_da_exclusao(confirmou, excluido)
 
     finally:
         print("Fim da tentativa de exclusão.")
@@ -963,12 +1539,8 @@ def relatorio_por_status_interativo(conexao, id_usuario: int) -> None:
     except banco.ErroBanco as erro:
         print(f"\nErro: {erro}")
     else:
-        filtrados = dados.filtrar_por_status(registros, status)
-
-        if filtrados:
-            mostra_registros_numerados(filtrados)
-        else:
-            print("Nenhum registro com esse status.")
+        lista = dados.filtrar_por_campo(registros, "status", status)
+        mostra_registros_ou_aviso(lista, "Nenhum registro com esse status.")
 
     pausar()
 
@@ -984,10 +1556,8 @@ def relatorio_por_pontos_interativo(conexao, id_usuario: int) -> None:
     except banco.ErroBanco as erro:
         print(f"\nErro: {erro}")
     else:
-        if registros:
-            mostra_registros_numerados(dados.registros_por_pontos(registros))
-        else:
-            print("\nNenhum registro ainda.")
+        lista = dados.ordenar_por_pontos(registros)
+        mostra_registros_ou_aviso(lista, "\nNenhum registro ainda.")
 
     pausar()
 
@@ -1040,6 +1610,27 @@ def exportar_respostas_interativo(usuario: dict, id_comunidade: int | None) -> N
 # CONSULTAS NA API PÚBLICA
 
 
+def mostra_ranking(ranking: list[dict]) -> None:
+    """
+    Exibe a tabela do ranking de usuários.
+    Entrada: ranking (list[dict]) já ordenada, com nome, perfil e pontos.
+    Saida: não retorna valor; imprime a tabela.
+    """
+    borda = "+" + "-" * 5 + "+" + "-" * 27 + "+" + "-" * 12 + "+" + "-" * 10 + "+"
+
+    print("\n" + borda)
+    print(f"| {'Pos':>3} | {'Nome':<25} | {'Perfil':<10} | {'Pontos':>8} |")
+    print(borda)
+
+    for posicao, usuario in enumerate(ranking, start=1):
+        print(
+            f"| {posicao:>3} | {usuario['nome'][:25]:<25} | "
+            f"{usuario['perfil']:<10} | {usuario['pontos']:>8.1f} |"
+        )
+
+    print(borda)
+
+
 def ranking_api_interativo() -> None:
     """
     Busca os usuários na API e mostra o ranking por pontos.
@@ -1053,38 +1644,9 @@ def ranking_api_interativo() -> None:
     except api.ErroApi as erro:
         print(f"\nErro: {erro}")
     else:
-        ranking = dados.ranking_de_usuarios(usuarios)
-        borda = "+" + "-" * 5 + "+" + "-" * 27 + "+" + "-" * 12 + "+" + "-" * 10 + "+"
-
-        print("\n" + borda)
-        print(f"| {'Pos':>3} | {'Nome':<25} | {'Perfil':<10} | {'Pontos':>8} |")
-        print(borda)
-
-        for posicao, usuario in enumerate(ranking, start=1):
-            print(
-                f"| {posicao:>3} | {usuario['nome'][:25]:<25} | "
-                f"{usuario['perfil']:<10} | {usuario['pontos']:>8.1f} |"
-            )
-
-        print(borda)
+        mostra_ranking(dados.ordenar_por_pontos(usuarios))
 
     pausar()
-
-
-def escolhe_comunidade_api(comunidades: list[dict]) -> int:
-    """
-    Mostra as comunidades da API numeradas e pede uma delas.
-    Entrada: comunidades (list[dict]) com id e nome, não vazia.
-    Saida: id (int) da comunidade escolhida.
-    """
-    print("\nComunidades:")
-
-    for posicao, comunidade in enumerate(comunidades, start=1):
-        print(f"{posicao}. {comunidade['nome']}")
-
-    escolha = pede_numero_da_lista("Escolha a comunidade", len(comunidades))
-
-    return comunidades[escolha - 1]["id"]
 
 
 def postagens_da_comunidade_api_interativo() -> None:
@@ -1109,57 +1671,114 @@ def postagens_da_comunidade_api_interativo() -> None:
         pausar()
         return
 
-    id_comunidade = escolhe_comunidade_api(comunidades)
-    postagens_filtradas = dados.filtrar_por_comunidade(postagens, id_comunidade)
+    id_comunidade = escolhe_comunidade(comunidades, "Comunidades:", "Escolha a comunidade")
+    lista = dados.filtrar_por_campo(postagens, "id_comunidade", id_comunidade)
 
-    if postagens_filtradas:
-        mostra_registros_numerados(postagens_filtradas)
-    else:
-        print("\nNenhuma postagem nessa comunidade.")
-
+    mostra_registros_ou_aviso(lista, "\nNenhuma postagem nessa comunidade.")
     pausar()
 
 
 # MENUS
 
-def menu_principal(nome_usuario: str | None) -> str:
+def menu_inicial() -> str:
     """
-    Exibe e valida as opções do menu principal. É a primeira tela do sistema;
-    as opções 1, 2 e 3 pedem a identificação do usuário na primeira vez.
-    Entrada: nome_usuario (str, ou None se ninguém se identificou ainda);
-             opção informada pelo usuário no teclado.
-    Saida: opção valida (str).
+    Exibe e valida as opções da tela de entrada do sistema (quem ainda não
+    entrou numa conta). É a primeira tela do programa.
+    Entrada: opção informada pelo usuário no teclado.
+    Saida: opção válida (str).
     """
     print("\n" + "=" * 50)
     print("SISTEMA DE PONTOS AMBIENTAIS LOBO-GUARÁ TECH")
     print("=" * 50)
-    if nome_usuario is None:
-        nome_usuario = "não identificado"
-
-    print(f"Usuário: {nome_usuario}")
-    print("-" * 50)
     print("0. Sair")
+    print("1. Entrar")
+    print("2. Cadastrar-se")
+    print("3. Consultar API pública")
+
+    return pede_opcao(("0", "1", "2", "3"))
+
+
+def menu_principal(nome: str) -> str:
+    """
+    Exibe e valida as opções do menu de quem já entrou na conta.
+    Entrada: nome (str) do usuário que está na conta; opção pelo teclado.
+    Saida: opção válida (str).
+    """
+    print("\n" + "=" * 50)
+    print("SISTEMA DE PONTOS AMBIENTAIS LOBO-GUARÁ TECH")
+    print("=" * 50)
+    print(f"Usuário: {nome}")
+    print("-" * 50)
+    print("0. Encerrar o sistema")
     print("1. Registrar pontos")
     print("2. Gerenciar ações")
     print("3. Relatórios")
-    print("4. Trocar de usuário")
+    print("4. Minha conta")
     print("5. Consultar API pública")
+    print("6. Sair da conta")
 
-    op = input("\nOpção: ").strip()
+    return pede_opcao(("0", "1", "2", "3", "4", "5", "6"))
 
-    # Repete até digitar uma opção existente
-    while op not in ("0", "1", "2", "3", "4", "5"):
-        print("Opção inválida.")
-        op = input("Opção: ").strip()
 
-    return op
+def menu_conta() -> str:
+    """
+    Exibe e valida as opções da conta do usuário (CRUD do cadastro).
+    Entrada: opção informada pelo usuário no teclado.
+    Saida: opção válida (str).
+    """
+    print("\n" + "=" * 50)
+    print("MINHA CONTA")
+    print("=" * 50)
+    print("1. Ver perfil")
+    print("2. Alterar dados")
+    print("3. Alterar senha")
+    print("4. Minhas comunidades")
+    print("5. Excluir conta")
+    print("6. Voltar")
+
+    return pede_opcao(("1", "2", "3", "4", "5", "6"))
+
+
+def menu_alterar_dados() -> str:
+    """
+    Exibe e valida a escolha do dado do perfil a alterar.
+    Entrada: opção informada pelo usuário no teclado.
+    Saida: opção válida (str).
+    """
+    print("\n" + "=" * 50)
+    print("ALTERAR DADOS")
+    print("=" * 50)
+    print("1. Nome")
+    print("2. E-mail")
+    print("3. Username")
+    print("4. Data de nascimento")
+    print("5. Voltar")
+
+    return pede_opcao(("1", "2", "3", "4", "5"))
+
+
+def menu_comunidades() -> str:
+    """
+    Exibe e valida as opções de comunidades do usuário.
+    Entrada: opção informada pelo usuário no teclado.
+    Saida: opção válida (str).
+    """
+    print("\n" + "=" * 50)
+    print("MINHAS COMUNIDADES")
+    print("=" * 50)
+    print("1. Ver minhas comunidades")
+    print("2. Entrar em uma comunidade")
+    print("3. Sair de uma comunidade")
+    print("4. Voltar")
+
+    return pede_opcao(("1", "2", "3", "4"))
 
 
 def menu_crud() -> str:
     """
     Exibe e valida as opções de gerenciamento de ações.
     Entrada: opção informada pelo usuário no teclado.
-    Saida: opção valida (str).
+    Saida: opção válida (str).
     """
     print("\n" + "=" * 50)
     print("GERENCIAR AÇÕES")
@@ -1171,20 +1790,14 @@ def menu_crud() -> str:
     print("5. Excluir")
     print("6. Voltar")
 
-    op = input("\nOpção: ").strip()
-
-    while op not in ("1", "2", "3", "4", "5", "6"):
-        print("Opção inválida.")
-        op = input("Opção: ").strip()
-
-    return op
+    return pede_opcao(("1", "2", "3", "4", "5", "6"))
 
 
 def menu_api() -> str:
     """
     Exibe e valida as opções de consulta à API pública.
     Entrada: opção informada pelo usuário no teclado.
-    Saida: opção valida (str).
+    Saida: opção válida (str).
     """
     print("\n" + "=" * 50)
     print("CONSULTAR API PÚBLICA")
@@ -1193,20 +1806,14 @@ def menu_api() -> str:
     print("2. Postagens de uma comunidade")
     print("3. Voltar")
 
-    op = input("\nOpção: ").strip()
-
-    while op not in ("1", "2", "3"):
-        print("Opção inválida.")
-        op = input("Opção: ").strip()
-
-    return op
+    return pede_opcao(("1", "2", "3"))
 
 
 def menu_relatorios() -> str:
     """
     Exibe e valida as opções de relatórios.
-    Entrada: opcao informada pelo usuário no teclado.
-    Saida: opção valida (str).
+    Entrada: opção informada pelo usuário no teclado.
+    Saida: opção válida (str).
     """
     print("\n" + "=" * 50)
     print("RELATÓRIOS")
@@ -1218,10 +1825,4 @@ def menu_relatorios() -> str:
     print("5. Exportar minhas respostas (JSON)")
     print("6. Voltar")
 
-    op = input("\nOpção: ").strip()
-
-    while op not in ("1", "2", "3", "4", "5", "6"):
-        print("Opção inválida.")
-        op = input("Opção: ").strip()
-
-    return op
+    return pede_opcao(("1", "2", "3", "4", "5", "6"))
