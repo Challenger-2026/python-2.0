@@ -7,6 +7,17 @@ Programa de console em Python que registra ações ambientais de um usuário e a
 
 ---
 
+## Sumário
+
+0. [Identificação do grupo](#0-identificação-do-grupo)
+1. [Visão geral e aderência ao tema](#1-visão-geral-e-aderência-ao-tema)
+2. [Como executar](#2-como-executar)
+3. [Fluxo de funcionamento](#3-fluxo-de-funcionamento)
+4. [Requisitos da sprint e onde estão no código](#4-requisitos-da-sprint-e-onde-estão-no-código)
+5. [Resumo das funções](#5-resumo-das-funções)
+
+---
+
 ## 0. Identificação do grupo
 
 **Equipe:** Lobo-guará Tech
@@ -28,9 +39,9 @@ Programa de console em Python que registra ações ambientais de um usuário e a
 
 ## 1. Visão geral e aderência ao tema
 
-A plataforma Lobo-guará Tech premia pessoas que praticam ações ambientais. Cada ação enviada vira uma "postagem" com link de evidência, que fica **PENDENTE** até a moderação aprovar ou rejeitar, e gera pontos para o usuário.
+O tema do projeto é o incentivo a ações sustentáveis. Muitas pessoas já fazem algo pelo meio ambiente, mas essas ações raramente são reconhecidas ou medidas. A plataforma Lobo-guará Tech transforma essas ações em pontos: o usuário registra o que fez, envia um link como evidência e a ação fica **PENDENTE** até ser moderada. Os pontos variam conforme o nível de impacto da ação e formam um ranking entre os participantes.
 
-O programa em Python é um segundo canal de acesso a esses mesmos dados: o que é cadastrado, registrado, alterado ou excluído por ele fica gravado no mesmo banco usado pela API Java, e o que foi cadastrado pela plataforma (usuários, comunidades e postagens) é lido pelo programa. Os dados são relevantes para o projeto porque são exatamente os do desafio: ações sustentáveis, pontuação e ranking.
+O programa em Python é a ferramenta do usuário nessa plataforma. Com ele, a pessoa se cadastra, entra em uma comunidade, registra suas ações dia a dia, acompanha e exporta seus pontos e consulta o ranking público. Todos os dados ficam gravados em um banco Oracle, o mesmo usado pela plataforma, então o que é registrado pelo programa aparece também no ranking. Por isso a solução é aderente ao tema: trabalha diretamente com ações sustentáveis, pontuação e ranking.
 
 ### Estrutura do código
 
