@@ -30,8 +30,7 @@ Programa de console em Python que registra ações ambientais de um usuário e a
 | Lucas Fortunato Brandão | 572860 |
 | Nicolas Rodrigues Martins | 573178 |
 
-**Vídeo de apresentação:** `<PREENCHER: colar o link depois de publicar o vídeo>`
-
+**Vídeo de apresentação:** https://youtu.be/43zXzndBfEc
 **Repositório:** https://github.com/Challenger-2026/python-2.0
 **API publicada:** https://guara-api.onrender.com
 
